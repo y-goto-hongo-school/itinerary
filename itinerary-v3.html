@@ -1,0 +1,2214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>ITINERARY — Premium Travel Dashboard</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<style id="fouc-guard">
+    html, body { background: #02040a !important; margin: 0; padding: 0; }
+    body { visibility: hidden; }
+    body.css-ready { visibility: visible; }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Leaflet (1.9.4) — マップエンジン
+     CDN: jsdelivr (本体index.htmlと同じCDN、CSP方針が一貫する)
+     SRI属性は外す:file://プロトコルでの crossorigin 検証失敗を避けるため。
+     本番のhttps://でも、jsdelivrは信頼できる配信元として運用してOK。 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+
+
+<style>
+:root {
+    --primary-blue: #004482;
+    --accent-gold: #f39c12;
+    --accent-cyan: #00f2fe;
+    --accent-cyan-soft: rgba(0, 242, 254, 0.6);
+    --accent-warning: #ff6b6b;
+    --accent-green: #4ade80;
+    --accent-warm: #fbbf24;
+    --bg-color: #03060d;
+    --bg-deep: #01030a;
+    --card-glass: rgba(8, 14, 28, 0.55);
+    --card-glass-hover: rgba(12, 20, 38, 0.7);
+    --card-border: rgba(0, 242, 254, 0.12);
+    --card-border-hover: rgba(0, 242, 254, 0.3);
+    --grid-color: rgba(0, 242, 254, 0.08);
+    --text-mono: 'JetBrains Mono', 'Courier New', monospace;
+    --text-display: 'Orbitron', 'Rajdhani', sans-serif;
+    --text-body: 'Rajdhani', 'Inter', sans-serif;
+
+    /* カテゴリ色(六角形と用途別アクセントに使用) */
+    --cat-transport: #00f2fe;
+    --cat-study:     #60a5fa;
+    --cat-sight:     #f39c12;
+    --cat-meal:      #fbbf24;
+    --cat-rest:      #94a3b8;
+    --cat-play:      #fb7185;
+    --cat-conf:      #a78bfa;
+    --cat-sport:     #4ade80;
+    --cat-shop:      #f472b6;
+    --cat-lodging:   #fbbf24;
+    --cat-free:      #64748b;
+    --cat-other:     #94a3b8;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+
+body {
+    background: var(--bg-color);
+    color: #e2e8f0;
+    font-family: var(--text-body);
+    font-weight: 400;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 80%);
+}
+
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.18) 2px,
+        rgba(0, 0, 0, 0.18) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.45;
+}
+
+/* ──────────── MODAL CONTAINER (本体のmodal-contentに合わせた形) ──────────── */
+.modal-stage {
+    position: relative;
+    z-index: 2;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 18px 80px;
+    /* 本体に統合したときのフェード演出を疑似的に再現 */
+    animation: stage-in 0.5s ease both;
+}
+@keyframes stage-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ──────────── HEADER (CHECKLIST/CONFIGに合わせ、センター揃え・SYSテキスト無し) ──────────── */
+.modal-header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 24px;
+    padding: 0 40px; /* 右上の補助情報スペース */
+}
+.modal-header h2 {
+    font-family: var(--text-display);
+    font-size: clamp(14px, 3vw, 18px);
+    color: var(--accent-cyan);
+    letter-spacing: 0.4em;
+    font-weight: 500;
+    text-shadow: 0 0 16px rgba(0, 242, 254, 0.4);
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+.modal-header .subtitle {
+    font-family: var(--text-body);
+    font-size: 14px;
+    color: var(--accent-gold);
+    letter-spacing: 0.08em;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+.modal-header .operator {
+    font-family: var(--text-mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: rgba(226, 232, 240, 0.5);
+    text-transform: uppercase;
+}
+.modal-header .header-divider {
+    margin-top: 14px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 242, 254, 0.4), transparent);
+}
+
+/* ──────────── DAY HEADER (現在表示中の日) ──────────── */
+.day-header {
+    margin: 22px 0 14px;
+    padding: 14px 16px;
+    background: var(--card-glass);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(8px);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.day-header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    opacity: 0.6;
+}
+.day-header .day-num {
+    font-family: var(--text-mono);
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    color: rgba(0, 242, 254, 0.75);
+    text-transform: uppercase;
+}
+.day-header .day-date {
+    font-family: var(--text-display);
+    font-size: 22px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+}
+.day-header .day-summary {
+    font-family: var(--text-body);
+    font-size: 13.5px;
+    color: rgba(226, 232, 240, 0.78);
+    margin-top: 6px;
+    letter-spacing: 0.02em;
+}
+.day-header.is-today .day-num { color: var(--accent-gold); }
+.day-header.is-today .day-num::before {
+    content: '● ';
+    color: var(--accent-gold);
+    text-shadow: 0 0 8px var(--accent-gold);
+    animation: today-pulse 2s ease-in-out infinite;
+}
+@keyframes today-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* ──────────── MAP (Leaflet ベース) ──────────── */
+.map-section {
+    position: relative;
+    border: 1px solid var(--card-border);
+    background: #050a16;
+    overflow: hidden;
+    margin-bottom: 18px;
+    box-shadow: 0 0 40px rgba(0, 242, 254, 0.05);
+}
+.map-section .map-label {
+    position: absolute;
+    top: 12px; left: 16px;
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.32em;
+    color: rgba(0, 242, 254, 0.7);
+    z-index: 600;  /* leafletのコントロール層より上 */
+    pointer-events: none;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+    background: rgba(5, 10, 22, 0.7);
+    padding: 4px 8px;
+    border: 1px solid rgba(0, 242, 254, 0.2);
+}
+.map-section .map-coords {
+    position: absolute;
+    bottom: 10px; right: 14px;
+    font-family: var(--text-mono);
+    font-size: 9px;
+    color: rgba(0, 242, 254, 0.6);
+    letter-spacing: 0.1em;
+    z-index: 600;
+    pointer-events: none;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+}
+.map-section .map-zoom-info {
+    position: absolute;
+    bottom: 10px; left: 14px;
+    font-family: var(--text-mono);
+    font-size: 9px;
+    color: rgba(0, 242, 254, 0.6);
+    letter-spacing: 0.1em;
+    z-index: 600;
+    pointer-events: none;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+}
+.map-svg-wrap {  /* 名前は残すが中身はLeafletのコンテナに */
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-top: 56%;
+    overflow: hidden;
+}
+#leaflet-map {
+    position: absolute;
+    inset: 0;
+    background: #050a16;
+}
+
+/* Leafletタイル全体に計器盤フィルター
+   CARTO Dark Matterは元から暗いダーク基調だが、cyan寄りに染めて世界観統合
+   - hue-rotate: cyanの方向に色相シフト
+   - saturate: 彩度を強めに
+   - brightness: 少し落として星空感
+   - contrast: 線をシャープに */
+.leaflet-tile-pane {
+    filter: brightness(0.78) contrast(1.15) saturate(1.45) hue-rotate(165deg);
+}
+/* 走査線オーバーレイ(地図の上に重ねる) */
+.map-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.22) 2px,
+        rgba(0, 0, 0, 0.22) 4px
+    );
+    pointer-events: none;
+    z-index: 500;
+    opacity: 0.5;
+}
+/* 流れる走査線 — マップラッパーの中で、マップの高さに対して animate */
+.map-svg-wrap::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 4px;
+    top: 0;
+    background: linear-gradient(180deg,
+        rgba(0, 242, 254, 0) 0%,
+        rgba(0, 242, 254, 0.22) 50%,
+        rgba(0, 242, 254, 0) 100%);
+    pointer-events: none;
+    z-index: 503;
+    animation: map-scan 5s linear infinite;
+}
+@keyframes map-scan {
+    0%   { top: -4px; }
+    100% { top: 100%; }
+}
+
+/* グリッドオーバーレイ — 計器盤らしさ */
+.map-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 502;
+    background-image:
+        linear-gradient(rgba(0, 242, 254, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 242, 254, 0.06) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mix-blend-mode: screen;
+}
+
+/* マップコントロール(自前) */
+.map-controls {
+    position: absolute;
+    top: 12px; right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 600;
+}
+.map-controls button {
+    width: 30px; height: 30px;
+    background: rgba(8, 14, 28, 0.85);
+    border: 1px solid rgba(0, 242, 254, 0.35);
+    color: var(--accent-cyan);
+    font-family: var(--text-mono);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    backdrop-filter: blur(6px);
+    line-height: 1;
+}
+.map-controls button:hover {
+    background: rgba(0, 242, 254, 0.18);
+    box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+}
+.map-controls button:active { transform: scale(0.95); }
+
+/* Leafletの標準コントロール(zoom)を非表示にして自前と統一 */
+.leaflet-control-zoom { display: none !important; }
+/* Leaflet帰属表記の見た目をダーク化 */
+.leaflet-control-attribution {
+    background: rgba(5, 10, 22, 0.75) !important;
+    color: rgba(226, 232, 240, 0.5) !important;
+    font-family: var(--text-mono) !important;
+    font-size: 8px !important;
+    letter-spacing: 0.05em;
+    padding: 2px 6px !important;
+    border: 1px solid rgba(0, 242, 254, 0.15);
+}
+.leaflet-control-attribution a {
+    color: rgba(0, 242, 254, 0.7) !important;
+}
+.leaflet-container { background: #050a16; }
+
+.corner {
+    position: absolute;
+    width: 14px; height: 14px;
+    z-index: 605;
+    pointer-events: none;
+}
+.corner-tl { top: 0; left: 0; border-top: 1px solid var(--accent-cyan); border-left: 1px solid var(--accent-cyan); }
+.corner-tr { top: 0; right: 0; border-top: 1px solid var(--accent-cyan); border-right: 1px solid var(--accent-cyan); }
+.corner-bl { bottom: 0; left: 0; border-bottom: 1px solid var(--accent-cyan); border-left: 1px solid var(--accent-cyan); }
+.corner-br { bottom: 0; right: 0; border-bottom: 1px solid var(--accent-cyan); border-right: 1px solid var(--accent-cyan); }
+
+/* 自前マーカー(divIcon) */
+.itn-marker {
+    /* Leafletが付与する標準サイズを上書き */
+    width: 28px !important;
+    height: 28px !important;
+    margin-left: -14px !important;
+    margin-top: -14px !important;
+    pointer-events: auto;
+    cursor: pointer;
+}
+.itn-marker .marker-inner {
+    width: 100%; height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 六角形 */
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    background: var(--marker-color, var(--accent-cyan));
+    box-shadow: 0 0 14px var(--marker-glow, rgba(0, 242, 254, 0.6));
+    transition: transform 0.18s;
+}
+.itn-marker:hover .marker-inner { transform: scale(1.18); }
+.itn-marker .marker-inner::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    background: linear-gradient(135deg, #0a1428 0%, #050a16 100%);
+}
+.itn-marker .marker-num {
+    position: relative;
+    z-index: 2;
+    font-family: var(--text-display);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--marker-color, var(--accent-cyan));
+    text-shadow: 0 0 4px var(--marker-glow);
+    line-height: 1;
+}
+.itn-marker.is-active .marker-inner {
+    transform: scale(1.3);
+    box-shadow: 0 0 24px var(--marker-glow, rgba(0, 242, 254, 0.8));
+}
+.itn-marker.is-active::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border: 1px solid var(--marker-color);
+    border-radius: 50%;
+    animation: marker-pulse 1.5s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes marker-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50%      { opacity: 0;   transform: scale(1.6); }
+}
+.itn-marker .marker-label {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 4px;
+    font-family: var(--text-mono);
+    font-size: 9px;
+    color: var(--marker-color);
+    background: rgba(5, 10, 22, 0.85);
+    padding: 2px 5px;
+    border: 1px solid var(--marker-color);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+/* Leaflet pathに移動手段別の色を当てるためのクラス */
+.transport-line { stroke-linecap: round; }
+.transport-line.mode-flight    { stroke: #00f2fe; stroke-dasharray: 8 6; }
+.transport-line.mode-rail      { stroke: #00f2fe; stroke-dasharray: 4 4; }
+.transport-line.mode-bus       { stroke: #f39c12; }
+.transport-line.mode-host_car  { stroke: #fbbf24; stroke-dasharray: 2 4; }
+.transport-line.mode-ferry     { stroke: #60a5fa; stroke-dasharray: 6 6; }
+.transport-line.mode-subway    { stroke: #a78bfa; stroke-dasharray: 4 4; }
+.transport-line.mode-taxi      { stroke: #fbbf24; stroke-dasharray: 2 2; }
+.transport-line.mode-walk      { stroke: #94a3b8; stroke-dasharray: 1 4; }
+.transport-line.mode-default   { stroke: #00f2fe; stroke-dasharray: 4 4; }
+.transport-line-glow { stroke: #00f2fe; stroke-opacity: 0.18; stroke-linecap: round; }
+
+/* ──────────── STATS BAR ──────────── */
+.stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--card-border);
+    margin-bottom: 22px;
+}
+.stat-cell {
+    background: var(--bg-deep);
+    padding: 10px 12px;
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgba(226, 232, 240, 0.4);
+    text-transform: uppercase;
+}
+.stat-cell .val {
+    display: block;
+    font-size: 16px;
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-top: 4px;
+    letter-spacing: 0.04em;
+}
+.stat-cell .val.accent { color: var(--accent-cyan); text-shadow: 0 0 12px rgba(0, 242, 254, 0.3); }
+.stat-cell .val.gold { color: var(--accent-gold); }
+
+/* ──────────── DAY SCRUBBER ──────────── */
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 22px 0 12px;
+}
+.section-header .label {
+    font-family: var(--text-display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.32em;
+    color: var(--accent-cyan);
+}
+.section-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(0, 242, 254, 0.25), transparent);
+}
+
+.scrubber {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px 18px 14px;
+    margin: 0 -18px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 242, 254, 0.3) transparent;
+}
+.scrubber::-webkit-scrollbar { height: 4px; }
+.scrubber::-webkit-scrollbar-track { background: transparent; }
+.scrubber::-webkit-scrollbar-thumb { background: rgba(0, 242, 254, 0.3); border-radius: 2px; }
+
+.day-chip {
+    flex-shrink: 0;
+    min-width: 74px;
+    padding: 9px 10px;
+    background: var(--card-glass);
+    border: 1px solid var(--card-border);
+    border-top: 2px solid rgba(0, 242, 254, 0.2);
+    cursor: pointer;
+    transition: all 0.18s;
+    text-align: center;
+    font-family: var(--text-mono);
+}
+.day-chip .num {
+    font-family: var(--text-display);
+    font-size: 16px;
+    font-weight: 700;
+    color: #e2e8f0;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+.day-chip .date {
+    font-size: 10px;
+    color: rgba(226, 232, 240, 0.5);
+    margin-top: 5px;
+    letter-spacing: 0.08em;
+}
+.day-chip .dow {
+    font-size: 8.5px;
+    color: rgba(226, 232, 240, 0.4);
+    margin-top: 2px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+.day-chip:hover {
+    border-color: var(--card-border-hover);
+    background: var(--card-glass-hover);
+}
+.day-chip.selected {
+    border-color: var(--accent-cyan);
+    border-top-color: var(--accent-cyan);
+    background: rgba(0, 242, 254, 0.08);
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.2);
+}
+.day-chip.selected .num { color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 242, 254, 0.55); }
+.day-chip.today {
+    border-top-color: var(--accent-gold);
+    box-shadow: 0 -2px 12px rgba(243, 156, 18, 0.3);
+}
+.day-chip.today .num { color: var(--accent-gold); }
+.day-chip.today.selected {
+    /* 仮の今日かつ選択中:両色の融合表現 */
+    border-color: var(--accent-cyan);
+    border-top: 2px solid;
+    border-image: linear-gradient(90deg, var(--accent-gold), var(--accent-cyan)) 1;
+    background: rgba(0, 242, 254, 0.08);
+}
+.day-chip.today.selected .num {
+    background: linear-gradient(90deg, var(--accent-gold), var(--accent-cyan));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ──────────── TIMELINE — (II) 六角形カード一体型 ──────────── */
+/*
+  デザインのキモ:
+  - 左側に大きめの六角形(48px)
+  - 六角形の右辺がカードに食い込む(margin-left: -7px)
+  - カード本体は左の角を六角形に合わせて切り落とす(clip-path)
+  - 「縦線」は六角形の中心を通る一本通し
+  - 時刻はカード内、左上の小さな固定領域に
+  - 左の色帯は廃止、代わりに六角形そのものが色担当
+*/
+.timeline {
+    position: relative;
+    padding-left: 4px;
+}
+.timeline .tl-spine {
+    position: absolute;
+    /*
+      tl-hex-wrap は width:56px、その中央に六角形(50px)が配置されている。
+      timelineの padding-left は 4px。なので spine は left = 4 + 56/2 = 32px。
+      モバイルではwrapが50pxになるので、CSS変数で切替可能に。
+    */
+    left: var(--spine-x, 32px);
+    top: 12px; bottom: 12px;
+    width: 1px;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 242, 254, 0.4) 0px, rgba(0, 242, 254, 0.4) 4px,
+        transparent 4px, transparent 10px
+    );
+    pointer-events: none;
+    z-index: 0;
+}
+
+.tl-item {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 14px;
+    animation: fade-in-up 0.45s ease both;
+}
+.tl-item:nth-child(1) { animation-delay: 0.04s; }
+.tl-item:nth-child(2) { animation-delay: 0.10s; }
+.tl-item:nth-child(3) { animation-delay: 0.16s; }
+.tl-item:nth-child(4) { animation-delay: 0.22s; }
+.tl-item:nth-child(5) { animation-delay: 0.28s; }
+.tl-item:nth-child(6) { animation-delay: 0.34s; }
+.tl-item:nth-child(7) { animation-delay: 0.40s; }
+.tl-item:nth-child(8) { animation-delay: 0.46s; }
+@keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 六角形(色担当の主役) */
+.tl-hex-wrap {
+    flex-shrink: 0;
+    width: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+    padding-bottom: 10px;  /* ネームプレートが下にはみ出すぶんを確保 */
+}
+.tl-hex {
+    width: 50px; height: 50px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 外側の六角形:カラー帯。内側で背景色を上塗りして縁だけ残す */
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    background: var(--cat-color, var(--accent-cyan));
+    box-shadow: 0 0 18px var(--cat-glow, rgba(0, 242, 254, 0.45));
+}
+.tl-hex::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    background: linear-gradient(135deg, #0a1428 0%, #050a16 100%);
+    z-index: 1;
+}
+.tl-hex .icon {
+    position: relative;
+    z-index: 2;
+    font-size: 20px;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px var(--cat-glow, rgba(0, 242, 254, 0.5)));
+}
+/*
+  ネームプレート:長方形をそのまま表示する(六角形にクリップしない)
+  位置は六角形の下端と少し重なるあたり。長方形が下にはみ出して、
+  「六角形 + 下に飛び出した小さなプレート」の形になる。
+  - .tl-hex は overflow: visible (clip-pathは中身ではなく self に効くので、
+    nameplate は .tl-hex-wrap 直下に置く必要がある)
+*/
+.tl-hex-wrap .hex-tag {
+    position: absolute;
+    bottom: -3px;       /* 六角形の下端より少し下、長方形が顔を出す */
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--text-mono);
+    font-size: 7.5px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    color: var(--cat-color, var(--accent-cyan));
+    background: var(--bg-deep);
+    padding: 2px 6px 2px;
+    border: 1px solid var(--cat-color, var(--accent-cyan));
+    border-radius: 1px;
+    line-height: 1;
+    z-index: 5;     /* 六角形より上 */
+    white-space: nowrap;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* カード — 左の角を六角形に向かって切り落とし、六角形が食い込む */
+.tl-card {
+    flex: 1;
+    background: var(--card-glass);
+    border: 1px solid var(--card-border);
+    margin-left: -8px; /* 六角形と重なる */
+    padding: 12px 14px 12px 22px; /* 左パディングは食い込みぶん広く */
+    backdrop-filter: blur(6px);
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    /* 左上と左下を斜めにカット — 六角形の右辺と一致させる */
+    clip-path: polygon(
+        12px 0,
+        100% 0,
+        100% 100%,
+        12px 100%,
+        0 calc(100% - 12px),
+        0 12px
+    );
+}
+.tl-card:hover {
+    background: var(--card-glass-hover);
+    border-color: var(--card-border-hover);
+    transform: translateX(2px);
+}
+/* カードの右上にもコーナー装飾 — 計器盤らしさ */
+.tl-card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 8px; height: 8px;
+    border-top: 1px solid var(--cat-color, var(--accent-cyan));
+    border-right: 1px solid var(--cat-color, var(--accent-cyan));
+    opacity: 0.6;
+    pointer-events: none;
+}
+.tl-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 8px; height: 8px;
+    border-bottom: 1px solid var(--cat-color, var(--accent-cyan));
+    border-right: 1px solid var(--cat-color, var(--accent-cyan));
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* カードヘッダー(時刻 + タイプラベル) */
+.tl-card .card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 5px;
+    flex-wrap: wrap;
+}
+.tl-card .card-time {
+    font-family: var(--text-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: #e2e8f0;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+.tl-card .card-time .arrow {
+    color: rgba(0, 242, 254, 0.6);
+    margin: 0 4px;
+    font-weight: 400;
+}
+.tl-card .card-time .end {
+    color: #e2e8f0;            /* 出発と同じ明度 */
+    font-size: 13px;            /* 出発と同じサイズ */
+    font-weight: 500;
+    letter-spacing: 0.08em;
+}
+.tl-card .card-type {
+    font-family: var(--text-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.22em;
+    color: var(--cat-color, var(--accent-cyan));
+    text-transform: uppercase;
+    text-shadow: 0 0 8px var(--cat-glow);
+}
+
+.tl-card .card-name {
+    font-family: var(--text-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: #e2e8f0;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+}
+.tl-card .card-meta {
+    margin-top: 6px;
+    font-size: 13px;
+    color: rgba(226, 232, 240, 0.72);
+    line-height: 1.45;
+}
+.tl-card .card-meta strong {
+    color: rgba(226, 232, 240, 0.95);
+    font-weight: 600;
+}
+
+/* 移動カード(transport)の両端表示 */
+.tl-card.transport-card .card-meta .leg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.tl-card.transport-card .leg .arrow {
+    color: var(--cat-color, var(--accent-cyan));
+    opacity: 0.7;
+    font-family: var(--text-mono);
+    font-weight: 500;
+}
+
+/* バッジ */
+.tl-card .card-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    align-items: center;
+}
+.tl-card .badge {
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    padding: 3px 7px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(226, 232, 240, 0.8);
+    text-transform: uppercase;
+}
+.tl-card .badge.companion-group   { color: var(--accent-cyan); border-color: rgba(0, 242, 254, 0.4); }
+.tl-card .badge.companion-host    { color: var(--accent-warm); border-color: rgba(251, 191, 36, 0.45); }
+.tl-card .badge.companion-friends { color: #f472b6; border-color: rgba(244, 114, 182, 0.45); }
+.tl-card .badge.companion-solo    { color: #94a3b8; border-color: rgba(148, 163, 184, 0.5); }
+.tl-card .badge.companion-teacher { color: #a78bfa; border-color: rgba(167, 139, 250, 0.45); }
+.tl-card .badge.fare              { color: var(--accent-gold); border-color: rgba(243, 156, 18, 0.4); }
+.tl-card .badge.admission         { color: var(--accent-gold); border-color: rgba(243, 156, 18, 0.4); }
+
+/* 詳細(展開) */
+.tl-card .detail {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.32s ease, margin-top 0.32s ease, opacity 0.2s;
+    opacity: 0;
+    margin-top: 0;
+}
+.tl-card.expanded .detail {
+    max-height: 600px;
+    opacity: 1;
+    margin-top: 12px;
+}
+.tl-card .detail-block {
+    padding-top: 12px;
+    border-top: 1px dashed rgba(0, 242, 254, 0.22);
+    font-size: 13px;
+    color: rgba(226, 232, 240, 0.7);
+    line-height: 1.55;
+}
+.tl-card .detail-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+}
+.tl-card .detail-grid .k {
+    font-family: var(--text-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(226, 232, 240, 0.45);
+    text-transform: uppercase;
+    align-self: center;
+}
+.tl-card .detail-grid .v { color: rgba(226, 232, 240, 0.85); }
+.tl-card .detail-grid .v a {
+    color: var(--accent-cyan);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(0, 242, 254, 0.4);
+}
+.tl-card .detail-grid .v a:hover { color: #5eead4; }
+.tl-card .notes {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-left: 1px solid var(--cat-color, var(--accent-cyan));
+    font-size: 12.5px;
+    color: rgba(226, 232, 240, 0.78);
+    font-style: italic;
+}
+
+.tl-card .expand-hint {
+    position: absolute;
+    bottom: 4px; right: 12px;
+    font-family: var(--text-mono);
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: rgba(0, 242, 254, 0.45);
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.tl-card.expanded .expand-hint::before { content: '▴ '; }
+.tl-card:not(.expanded) .expand-hint::before { content: '▾ '; }
+
+/* カテゴリごとの色変数注入 */
+.cat-transport     { --cat-color: var(--cat-transport); --cat-glow: rgba(0, 242, 254, 0.55); }
+.cat-study         { --cat-color: var(--cat-study);     --cat-glow: rgba(96, 165, 250, 0.55); }
+.cat-sightseeing   { --cat-color: var(--cat-sight);     --cat-glow: rgba(243, 156, 18, 0.55); }
+.cat-meal          { --cat-color: var(--cat-meal);      --cat-glow: rgba(251, 191, 36, 0.55); }
+.cat-rest          { --cat-color: var(--cat-rest);      --cat-glow: rgba(148, 163, 184, 0.45); }
+.cat-play          { --cat-color: var(--cat-play);      --cat-glow: rgba(251, 113, 133, 0.55); }
+.cat-conference    { --cat-color: var(--cat-conf);      --cat-glow: rgba(167, 139, 250, 0.55); }
+.cat-sport         { --cat-color: var(--cat-sport);     --cat-glow: rgba(74, 222, 128, 0.55); }
+.cat-shopping      { --cat-color: var(--cat-shop);      --cat-glow: rgba(244, 114, 182, 0.5); }
+.cat-lodging       { --cat-color: var(--cat-lodging);   --cat-glow: rgba(251, 191, 36, 0.5); }
+.cat-free          { --cat-color: var(--cat-free);      --cat-glow: rgba(100, 116, 139, 0.4); }
+.cat-other         { --cat-color: var(--cat-other);     --cat-glow: rgba(148, 163, 184, 0.4); }
+
+/* マップ↔タイムライン双方向リンクの視覚フィードバック */
+.tl-item.flash .tl-card {
+    animation: card-flash 1.6s ease;
+}
+@keyframes card-flash {
+    0%   { box-shadow: 0 0 0 1px var(--accent-cyan), 0 0 30px rgba(0, 242, 254, 0.6); }
+    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
+}
+.tl-card.hovered-from-map {
+    background: var(--card-glass-hover);
+    border-color: var(--card-border-hover);
+}
+
+/* ──────────── EMPTY DAY ──────────── */
+.empty-day {
+    padding: 40px 20px;
+    text-align: center;
+    color: rgba(226, 232, 240, 0.4);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    border: 1px dashed rgba(0, 242, 254, 0.15);
+    background: var(--card-glass);
+}
+
+/* ──────────── ACTION BAR (最下部、控えめに) ──────────── */
+.action-bar {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(0, 242, 254, 0.12);
+}
+.action-bar .ab-label {
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.32em;
+    color: rgba(226, 232, 240, 0.4);
+    margin-bottom: 12px;
+    text-align: center;
+    text-transform: uppercase;
+}
+.action-bar .ab-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+.action-bar button {
+    padding: 11px 14px;
+    background: rgba(0, 242, 254, 0.04);
+    border: 1px solid rgba(0, 242, 254, 0.22);
+    color: rgba(226, 232, 240, 0.85);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+    transition: all 0.18s;
+    text-transform: uppercase;
+}
+.action-bar button:hover {
+    background: rgba(0, 242, 254, 0.1);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.18);
+}
+.action-bar button.danger {
+    border-color: rgba(255, 107, 107, 0.3);
+    color: rgba(255, 107, 107, 0.85);
+}
+.action-bar button.danger:hover {
+    background: rgba(255, 107, 107, 0.1);
+    border-color: var(--accent-warning);
+    color: var(--accent-warning);
+    box-shadow: 0 0 16px rgba(255, 107, 107, 0.22);
+}
+
+/* CLOSE — 本体の .ck-close-link と同じ控えめなテキストリンク */
+.close-section {
+    margin-top: 28px;
+    text-align: center;
+}
+.close-section .close-hint {
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: rgba(226, 232, 240, 0.32);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+.close-section .close-hint .kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid rgba(0, 242, 254, 0.25);
+    color: rgba(0, 242, 254, 0.55);
+    font-size: 8px;
+    margin: 0 2px;
+    line-height: 1.4;
+}
+.close-section .close-link {
+    display: inline-block;
+    background: none;
+    border: none;
+    text-align: center;
+    font-size: 0.7rem;
+    color: #475569;
+    cursor: pointer;
+    letter-spacing: 0.32em;
+    font-family: var(--text-mono);
+    text-transform: uppercase;
+    transition: color 0.2s;
+    padding: 8px 16px;
+}
+.close-section .close-link:hover {
+    color: rgba(0, 242, 254, 0.85);
+}
+
+.file-input { display: none; }
+
+/* ──────────── TOAST ──────────── */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    padding: 12px 22px;
+    background: rgba(0, 242, 254, 0.1);
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    font-family: var(--text-mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    box-shadow: 0 0 30px rgba(0, 242, 254, 0.3);
+    z-index: 100;
+    transition: transform 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { color: var(--accent-warning); border-color: var(--accent-warning); background: rgba(255, 107, 107, 0.1); box-shadow: 0 0 30px rgba(255, 107, 107, 0.3); }
+
+/* ──────────── CONFIRM (自前) ──────────── */
+.confirm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0s linear 0.2s;
+}
+.confirm-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s;
+}
+.confirm-box {
+    max-width: 400px;
+    margin: 0 20px;
+    padding: 24px 26px;
+    background: rgba(8, 14, 28, 0.95);
+    border: 1px solid var(--accent-cyan);
+    box-shadow: 0 0 40px rgba(0, 242, 254, 0.3);
+    transform: scale(0.95);
+    transition: transform 0.2s;
+}
+.confirm-overlay.active .confirm-box { transform: scale(1); }
+.confirm-overlay.danger .confirm-box { border-color: var(--accent-warning); box-shadow: 0 0 40px rgba(255, 107, 107, 0.3); }
+.confirm-box .ck-msg {
+    color: #e2e8f0;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 18px;
+}
+.confirm-box .ck-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.confirm-box button {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid rgba(226, 232, 240, 0.3);
+    color: rgba(226, 232, 240, 0.8);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+}
+.confirm-box button:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+.confirm-box button.primary {
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+}
+.confirm-overlay.danger .confirm-box button.primary {
+    color: var(--accent-warning);
+    border-color: var(--accent-warning);
+}
+.confirm-overlay.danger .confirm-box button.primary:hover {
+    background: rgba(255, 107, 107, 0.15);
+}
+
+/* ──────────── MOBILE ──────────── */
+@media (max-width: 600px) {
+    .modal-stage { padding: 20px 14px 60px; }
+    .modal-header { padding: 0 12px; margin-bottom: 18px; }
+    .modal-header h2 { font-size: 13px; letter-spacing: 0.3em; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .map-svg-wrap { padding-top: 75%; }
+    .day-header .day-date { font-size: 18px; }
+    .day-header { padding: 12px 14px; }
+    .timeline { --spine-x: 29px; }  /* mobile wrap width 50 → 4 + 50/2 = 29 */
+    .timeline .tl-spine { left: var(--spine-x); }
+    .tl-hex-wrap { width: 50px; }
+    .tl-hex { width: 44px; height: 44px; }
+    .tl-hex .icon { font-size: 17px; }
+    .tl-hex .hex-tag { font-size: 6px; }
+    .tl-card { padding: 11px 12px 11px 18px; }
+    .tl-card .card-name { font-size: 14px; }
+    .map-controls button { width: 28px; height: 28px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<div class="modal-stage" id="stage">
+
+    <!-- HEADER (CHECKLIST/CONFIGに揃えた中央寄せ) -->
+    <header class="modal-header">
+        <h2 id="modal-title">ITINERARY</h2>
+        <div class="subtitle" id="mission-subtitle">—</div>
+        <div class="operator" id="mission-operator">OPERATOR: —</div>
+        <div class="header-divider"></div>
+    </header>
+
+    <!-- DAY HEADER (現在の日のサマリ — 地図の前に置いて文脈を先に伝える) -->
+    <div class="day-header" id="day-header">
+        <div class="day-num" id="day-num">DAY —</div>
+        <div class="day-date" id="day-date">—</div>
+        <div class="day-summary" id="day-summary">—</div>
+    </div>
+
+    <!-- MAP -->
+    <div class="map-section" id="map-section">
+        <div class="corner corner-tl"></div>
+        <div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div>
+        <div class="corner corner-br"></div>
+        <div class="map-label">▾ TACTICAL MAP — DAY VIEW</div>
+        <div class="map-controls">
+            <button id="map-zoom-in"  title="Zoom in">+</button>
+            <button id="map-zoom-out" title="Zoom out">−</button>
+            <button id="map-reset"    title="Reset view" style="font-size: 10px;">⟳</button>
+        </div>
+        <div class="map-svg-wrap">
+            <div id="leaflet-map"></div>
+            <div class="map-grid-overlay"></div>
+        </div>
+        <div class="map-zoom-info" id="map-zoom-info">SCALE: —</div>
+        <div class="map-coords" id="map-coords">— / —</div>
+    </div>
+
+    <!-- STATS BAR -->
+    <div class="stats-bar">
+        <div class="stat-cell">DURATION<span class="val accent" id="stat-duration">— DAYS</span></div>
+        <div class="stat-cell">EVENTS<span class="val" id="stat-events">—</span></div>
+        <div class="stat-cell">WAYPOINTS<span class="val" id="stat-waypoints">—</span></div>
+        <div class="stat-cell">RANGE<span class="val gold" id="stat-range">—</span></div>
+    </div>
+
+    <!-- DAY SCRUBBER -->
+    <div class="section-header">
+        <span class="label">DAY SELECTOR</span>
+    </div>
+    <div class="scrubber" id="scrubber"></div>
+
+    <!-- TIMELINE -->
+    <div class="section-header">
+        <span class="label">TIMELINE</span>
+    </div>
+    <div class="timeline" id="timeline-wrap">
+        <div class="tl-spine"></div>
+        <div id="timeline"></div>
+    </div>
+
+    <!-- ACTION BAR (最下段) -->
+    <div class="action-bar">
+        <div class="ab-label">DATA OPERATIONS</div>
+        <div class="ab-grid">
+            <button id="btn-import">📂 IMPORT (.itn.json)</button>
+            <button id="btn-export">💾 EXPORT</button>
+            <button id="btn-template">📋 NEW TEMPLATE</button>
+            <button id="btn-sample">↻ RELOAD SAMPLE</button>
+            <button id="btn-purge" class="danger">⚠ PURGE ALL</button>
+        </div>
+        <input type="file" id="file-input" class="file-input" accept=".json,.itn.json,application/json">
+    </div>
+
+    <!-- CLOSE -->
+    <div class="close-section">
+        <div class="close-hint">TAP <span class="kbd">OUTSIDE</span> · PRESS <span class="kbd">ESC</span> · OR USE LINK BELOW</div>
+        <button id="btn-close" class="close-link">CLOSE</button>
+    </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- CONFIRM -->
+<div class="confirm-overlay" id="confirm-overlay">
+    <div class="confirm-box">
+        <div class="ck-msg" id="confirm-msg">—</div>
+        <div class="ck-actions">
+            <button id="confirm-cancel">Cancel</button>
+            <button id="confirm-ok" class="primary">OK</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// ITINERARY — STEP 1 v2
+// 修正: ヘッダー(中央寄せ・SYSバー削除)、地図(d3-zoom + パン/ズーム)、
+//       六角形カード一体型、当日ハイライト(仮の今日:DAY 09)、英語表記、
+//       アクションバー最下段、CLOSE仕様、PURGE ALL
+// ============================================================
+
+// 仮の今日(デモ用):本来は現実の today。サンプルデータの DAY 09 = 2026-07-28 を当日扱い
+const __DEMO_TODAY = '2026-07-28';
+
+// ──────────────── カテゴリ定義 ────────────────
+const CATEGORY_DEF = {
+    play:        { icon: '🎢', label: 'PLAY' },
+    study:       { icon: '🎓', label: 'STUDY' },
+    rest:        { icon: '🌙', label: 'REST' },
+    meal:        { icon: '🍽',  label: 'MEAL' },
+    conference:  { icon: '🎤', label: 'CONFERENCE' },
+    sport:       { icon: '⚽', label: 'SPORT' },
+    sightseeing: { icon: '🏛',  label: 'SIGHT' },
+    shopping:    { icon: '🛍',  label: 'SHOP' },
+    other:       { icon: '◇',  label: 'OTHER' },
+    free:        { icon: '◌',  label: 'FREE' },
+    homestay:    { icon: '🏠', label: 'HOME' },
+    hotel:       { icon: '🛏',  label: 'HOTEL' },
+    dorm:        { icon: '🏨', label: 'DORM' },
+    youth_hostel:{ icon: '🛌', label: 'HOSTEL' },
+    flight:      { icon: '✈',  label: 'FLIGHT' },
+    rail:        { icon: '🚆', label: 'RAIL' },
+    bus:         { icon: '🚌', label: 'BUS' },
+    subway:      { icon: '🚇', label: 'SUBWAY' },
+    taxi:        { icon: '🚕', label: 'TAXI' },
+    host_car:    { icon: '🚙', label: 'HOST' },
+    walk:        { icon: '🚶', label: 'WALK' },
+    ferry:       { icon: '⛴',  label: 'FERRY' }
+};
+const COMPANION_DEF = {
+    group:    { icon: '👥', label: 'GROUP' },
+    host:     { icon: '🏠', label: 'HOST' },
+    friends:  { icon: '👫', label: 'FRIENDS' },
+    solo:     { icon: '🚶', label: 'SOLO' },
+    teacher:  { icon: '👨‍🏫', label: 'TEACHER' }
+};
+// 六角形のカテゴリclass用マッピング(lodging系は'lodging'にまとめる、transport系は'transport')
+function categoryClass(cat) {
+    if (['homestay', 'hotel', 'dorm', 'youth_hostel'].includes(cat)) return 'lodging';
+    if (['flight', 'rail', 'bus', 'subway', 'taxi', 'host_car', 'walk', 'ferry'].includes(cat)) return 'transport';
+    return cat;
+}
+
+// ──────────────── サンプルデータ ────────────────
+const SAMPLE_ITN = {
+    format: "itn-v1",
+    meta: {
+        title: "Vancouver Language Program 2026",
+        subtitle: "Canada Study Tour",
+        operator: "GPI North America",
+        startDate: "2026-07-20",
+        endDate: "2026-08-04",
+        homeTimezone: "Asia/Tokyo",
+        destTimezone: "America/Vancouver"
+    },
+    days: [
+        {
+            date: "2026-07-20", dayLabel: "DAY 01",
+            summary: "Departure for Canada — crossing the Date Line",
+            events: [
+                { type: "transport", mode: "rail", carrier: "JR / Keikyu", routeName: "→ Haneda Airport",
+                  from: { name: "Shinjuku Stn.", coord: [35.6896, 139.7006], time: "16:00", tz: "Asia/Tokyo" },
+                  to:   { name: "Haneda Airport T3", coord: [35.5494, 139.7798], time: "17:30", tz: "Asia/Tokyo" },
+                  fare: { amount: 580, currency: "JPY" }, companion: "group",
+                  notes: "Meet at 16:00 at the ticket gate. Teacher will hold a placard." },
+                { type: "place", name: "Haneda Airport Terminal 3 (Intl)", category: "other",
+                  coord: [35.5494, 139.7798], address: "2-6-5 Hanedakuko, Ota-ku, Tokyo",
+                  startTime: "17:30", endTime: "21:55",
+                  purpose: "Check-in, immigration, boarding", companion: "group",
+                  notes: "Gather at 19:00, then board for Vancouver." },
+                { type: "transport", mode: "flight", carrier: "ANA", routeName: "NH116",
+                  from: { name: "Haneda (HND)", coord: [35.5494, 139.7798], time: "21:55", tz: "Asia/Tokyo" },
+                  to:   { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "14:50", tz: "America/Vancouver" },
+                  companion: "group",
+                  notes: "Crosses the International Date Line. In-flight meal provided." },
+                { type: "transport", mode: "bus", carrier: "GPI North America", routeName: "Charter",
+                  from: { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "15:30", tz: "America/Vancouver" },
+                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "17:00", tz: "America/Vancouver" },
+                  companion: "group",
+                  notes: "Meet local staff, then transfer to homestay area near Vancouver." },
+                { type: "lodging", kind: "homestay", name: "Host Family Residence",
+                  coord: [49.0846, -122.6017], checkIn: "18:30",
+                  notes: "Meet host family, homestay begins. Get plenty of rest after the long flight." }
+            ]
+        },
+        {
+            date: "2026-07-23", dayLabel: "DAY 04",
+            summary: "UBC Visit — full day program",
+            events: [
+                { type: "transport", mode: "host_car", carrier: "Host Family", routeName: "Drop-off",
+                  from: { name: "Host Home", coord: [49.0846, -122.6017], time: "07:30", tz: "America/Vancouver" },
+                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "08:00", tz: "America/Vancouver" },
+                  companion: "host",
+                  notes: "Driven by your host family. Don't forget to say thanks." },
+                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "→ UBC Campus",
+                  from: { name: "Study Center", coord: [49.0846, -122.6017], time: "08:30", tz: "America/Vancouver" },
+                  to:   { name: "UBC Campus", coord: [49.2606, -123.2460], time: "09:30", tz: "America/Vancouver" },
+                  companion: "group" },
+                { type: "place", name: "University of British Columbia (UBC)", category: "study",
+                  coord: [49.2606, -123.2460], address: "2329 West Mall, Vancouver, BC V6T 1Z4",
+                  startTime: "09:30", endTime: "12:00", hours: "09:00–17:00",
+                  admission: { amount: 0, currency: "CAD" },
+                  purpose: "Campus tour — broaden the horizon for higher education abroad",
+                  companion: "group",
+                  url: "https://maps.google.com/?q=University+of+British+Columbia",
+                  notes: "Top-tier Canadian university. Walk the campus with your buddy and try asking questions in English." },
+                { type: "place", name: "UBC Bookstore (Free Time)", category: "shopping",
+                  coord: [49.2647, -123.2520],
+                  startTime: "13:00", endTime: "14:30",
+                  purpose: "Souvenirs, university merchandise",
+                  companion: "friends",
+                  notes: "Manage your own budget. A real-world chance to practice English at the register." },
+                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "UBC → Host area",
+                  from: { name: "UBC", coord: [49.2606, -123.2460], time: "14:30", tz: "America/Vancouver" },
+                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "15:30", tz: "America/Vancouver" },
+                  companion: "group" },
+                { type: "lodging", kind: "homestay", name: "Host Family Residence",
+                  coord: [49.0846, -122.6017], checkIn: "16:00",
+                  notes: "Dinner with the host. Try sharing today's experience in English." }
+            ]
+        },
+        {
+            date: "2026-07-28", dayLabel: "DAY 09",
+            summary: "Victoria — full day excursion",
+            events: [
+                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "→ Tsawwassen Ferry",
+                  from: { name: "Study Center", coord: [49.0846, -122.6017], time: "07:00", tz: "America/Vancouver" },
+                  to:   { name: "Tsawwassen Terminal", coord: [49.0058, -123.1330], time: "08:00", tz: "America/Vancouver" },
+                  companion: "group" },
+                { type: "transport", mode: "ferry", carrier: "BC Ferries", routeName: "Tsawwassen → Swartz Bay",
+                  from: { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "09:00", tz: "America/Vancouver" },
+                  to:   { name: "Swartz Bay", coord: [48.6886, -123.4108], time: "10:35", tz: "America/Vancouver" },
+                  fare: { amount: 18, currency: "CAD" }, companion: "group",
+                  notes: "Strait crossing. Step out on deck — orcas are sometimes spotted." },
+                { type: "place", name: "Butchart Gardens", category: "sightseeing",
+                  coord: [48.5640, -123.4690], address: "800 Benvenuto Ave, Brentwood Bay, BC",
+                  startTime: "11:30", endTime: "13:30", hours: "09:00–22:00",
+                  admission: { amount: 38, currency: "CAD" },
+                  purpose: "Stroll the world-famous flower garden",
+                  companion: "group",
+                  url: "https://maps.google.com/?q=Butchart+Gardens" },
+                { type: "place", name: "Inner Harbour (Parliament & Empress)", category: "sightseeing",
+                  coord: [48.4194, -123.3700],
+                  startTime: "14:30", endTime: "17:00",
+                  purpose: "Explore the harbor area, free time",
+                  companion: "friends",
+                  notes: "Lots of street performers. Try asking someone to take a photo — in English." },
+                { type: "transport", mode: "ferry", carrier: "BC Ferries", routeName: "Swartz Bay → Tsawwassen",
+                  from: { name: "Swartz Bay", coord: [48.6886, -123.4108], time: "18:00", tz: "America/Vancouver" },
+                  to:   { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "19:35", tz: "America/Vancouver" },
+                  companion: "group" },
+                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "Tsawwassen → Host area",
+                  from: { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "19:50", tz: "America/Vancouver" },
+                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "20:50", tz: "America/Vancouver" },
+                  companion: "group" },
+                { type: "lodging", kind: "homestay", name: "Host Family Residence",
+                  coord: [49.0846, -122.6017], checkIn: "21:00" }
+            ]
+        },
+        {
+            date: "2026-08-03", dayLabel: "DAY 15",
+            summary: "Farewell to host family — return flight",
+            events: [
+                { type: "free", label: "Farewell to host family", companion: "host",
+                  notes: "Hand over a thank-you card. Last breakfast." },
+                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "→ Vancouver Airport",
+                  from: { name: "Study Center", coord: [49.0846, -122.6017], time: "13:30", tz: "America/Vancouver" },
+                  to:   { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "14:30", tz: "America/Vancouver" },
+                  companion: "group" },
+                { type: "transport", mode: "flight", carrier: "ANA", routeName: "NH115",
+                  from: { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "16:45", tz: "America/Vancouver" },
+                  to:   { name: "Haneda (HND)", coord: [35.5494, 139.7798], time: "19:00", tz: "Asia/Tokyo" },
+                  companion: "group",
+                  notes: "Return flight. Crosses the date line in the opposite direction, arriving the next day." }
+            ]
+        },
+        {
+            date: "2026-08-04", dayLabel: "DAY 16",
+            summary: "Arrival at Haneda — dismissal",
+            events: [
+                { type: "place", name: "Haneda Airport Terminal 3", category: "other",
+                  coord: [35.5494, 139.7798],
+                  startTime: "19:00", endTime: "20:00",
+                  purpose: "Arrival, immigration, baggage, dismissal",
+                  companion: "group",
+                  notes: "Parents will be there to pick you up. Great work, everyone!" }
+            ]
+        }
+    ]
+};
+
+// ──────────────── ステート ────────────────
+let state = {
+    itn: null,
+    selectedDayIdx: 0
+};
+
+// ──────────────── ユーティリティ ────────────────
+function $(sel) { return document.querySelector(sel); }
+function fmtCompact(isoDate) {
+    const d = new Date(isoDate + 'T00:00:00Z');
+    if (isNaN(d)) return isoDate;
+    return `${String(d.getUTCMonth()+1).padStart(2,'0')}/${String(d.getUTCDate()).padStart(2,'0')}`;
+}
+function dayOfWeekShort(isoDate) {
+    const d = new Date(isoDate + 'T00:00:00Z');
+    if (isNaN(d)) return '';
+    return ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getUTCDay()];
+}
+function fullDateEN(isoDate) {
+    const d = new Date(isoDate + 'T00:00:00Z');
+    if (isNaN(d)) return isoDate;
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const dows = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+    return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} (${dows[d.getUTCDay()]})`;
+}
+function todayIso() {
+    // 仮の今日が定義されていればそれを返す。本番ではnewDate()ベース。
+    if (__DEMO_TODAY) return __DEMO_TODAY;
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+}
+function showToast(msg, isError = false) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.toggle('error', isError);
+    el.classList.add('show');
+    clearTimeout(showToast._tid);
+    showToast._tid = setTimeout(() => el.classList.remove('show'), 2200);
+}
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+}
+
+// ──────────────── 自前 confirm ────────────────
+function ckConfirm(msg, opts = {}) {
+    return new Promise(resolve => {
+        const ov = $('#confirm-overlay');
+        $('#confirm-msg').textContent = msg;
+        ov.classList.toggle('danger', !!opts.danger);
+        ov.classList.add('active');
+        const ok = $('#confirm-ok');
+        const cancel = $('#confirm-cancel');
+        ok.textContent = opts.okText || 'OK';
+        cancel.textContent = opts.cancelText || 'Cancel';
+        function close(val) {
+            ov.classList.remove('active');
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            ov.removeEventListener('click', onBackdrop);
+            resolve(val);
+        }
+        function onOk() { close(true); }
+        function onCancel() { close(false); }
+        function onBackdrop(e) { if (e.target === ov) close(false); }
+        ok.addEventListener('click', onOk);
+        cancel.addEventListener('click', onCancel);
+        ov.addEventListener('click', onBackdrop);
+    });
+}
+
+// ──────────────── イベントの便利アクセサ ────────────────
+function eventCategory(ev) {
+    if (ev.type === 'place')     return ev.category || 'other';
+    if (ev.type === 'lodging')   return ev.kind || 'hotel';
+    if (ev.type === 'transport') return ev.mode || 'other';
+    if (ev.type === 'free')      return 'free';
+    return 'other';
+}
+function eventStartTime(ev) {
+    if (ev.type === 'transport') return ev.from?.time || '';
+    if (ev.type === 'place')     return ev.startTime || '';
+    if (ev.type === 'lodging')   return ev.checkIn  || '';
+    return '';
+}
+function eventEndTime(ev) {
+    if (ev.type === 'transport') return ev.to?.time || '';
+    if (ev.type === 'place')     return ev.endTime || '';
+    if (ev.type === 'lodging')   return ev.checkOut || '';
+    return '';
+}
+function eventCoords(ev) {
+    if (ev.type === 'place'   && ev.coord) return [{ coord: ev.coord, label: ev.name }];
+    if (ev.type === 'lodging' && ev.coord) return [{ coord: ev.coord, label: ev.name }];
+    if (ev.type === 'transport') {
+        const arr = [];
+        if (ev.from?.coord) arr.push({ coord: ev.from.coord, label: ev.from.name });
+        if (ev.to?.coord)   arr.push({ coord: ev.to.coord,   label: ev.to.name });
+        return arr;
+    }
+    return [];
+}
+
+// ──────────────── データロード ────────────────
+function loadItn(itn) {
+    if (!itn || !Array.isArray(itn.days)) {
+        showToast('Invalid itinerary file', true);
+        return false;
+    }
+    state.itn = itn;
+    state.selectedDayIdx = pickInitialDay(itn);
+    renderAll();
+    return true;
+}
+function pickInitialDay(itn) {
+    const t = todayIso();
+    const idx = itn.days.findIndex(d => d.date === t);
+    if (idx >= 0) return idx;
+    if (itn.days[0]?.date > t) return 0;
+    return itn.days.length - 1;
+}
+
+// ──────────────── レンダリング ────────────────
+function renderAll() {
+    renderHeader();
+    renderStats();
+    renderScrubber();
+    renderDay();
+    drawMap();
+}
+function renderHeader() {
+    const m = state.itn.meta || {};
+    $('#mission-subtitle').textContent = `${m.subtitle || ''}${m.title ? ' · ' + m.title : ''}`.trim();
+    $('#mission-operator').textContent = `OPERATOR: ${m.operator || '—'}`.toUpperCase();
+}
+function renderStats() {
+    const days = state.itn.days || [];
+    const evCount = days.reduce((s, d) => s + (d.events?.length || 0), 0);
+    const wpCount = days.reduce((s, d) => s + (d.events?.reduce((ss, ev) => ss + eventCoords(ev).length, 0) || 0), 0);
+    $('#stat-duration').textContent = `${days.length} DAYS`;
+    $('#stat-events').textContent = evCount;
+    $('#stat-waypoints').textContent = wpCount;
+
+    const allCoords = [];
+    days.forEach(d => d.events?.forEach(ev => eventCoords(ev).forEach(c => allCoords.push(c.coord))));
+    let maxDist = 0;
+    if (allCoords.length >= 2) {
+        let minLat=Infinity, maxLat=-Infinity, minLon=Infinity, maxLon=-Infinity;
+        allCoords.forEach(([la, lo]) => {
+            minLat = Math.min(minLat, la); maxLat = Math.max(maxLat, la);
+            minLon = Math.min(minLon, lo); maxLon = Math.max(maxLon, lo);
+        });
+        const R = 6371;
+        const dLat = (maxLat - minLat) * Math.PI / 180;
+        const dLon = (maxLon - minLon) * Math.PI / 180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(minLat*Math.PI/180) * Math.cos(maxLat*Math.PI/180) * Math.sin(dLon/2)**2;
+        maxDist = 2 * R * Math.asin(Math.sqrt(a));
+    }
+    $('#stat-range').textContent = maxDist > 0 ? `${Math.round(maxDist).toLocaleString()} KM` : '—';
+}
+
+function renderScrubber() {
+    const wrap = $('#scrubber');
+    wrap.innerHTML = '';
+    const t = todayIso();
+    state.itn.days.forEach((d, i) => {
+        const chip = document.createElement('div');
+        chip.className = 'day-chip';
+        if (i === state.selectedDayIdx) chip.classList.add('selected');
+        if (d.date === t) chip.classList.add('today');
+        chip.innerHTML = `
+            <div class="num">${(d.dayLabel || `D${i+1}`).replace(/^DAY\s*/i, '')}</div>
+            <div class="date">${fmtCompact(d.date)}</div>
+            <div class="dow">${dayOfWeekShort(d.date)}</div>
+        `;
+        chip.addEventListener('click', () => {
+            state.selectedDayIdx = i;
+            renderScrubber();
+            renderDay();
+            drawMap();
+            chip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        });
+        wrap.appendChild(chip);
+    });
+    const sel = wrap.querySelector('.day-chip.selected');
+    if (sel) sel.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
+}
+
+function renderDay() {
+    const d = state.itn.days[state.selectedDayIdx];
+    if (!d) return;
+    const t = todayIso();
+    const dh = $('#day-header');
+    dh.classList.toggle('is-today', d.date === t);
+    $('#day-num').textContent = (d.dayLabel || `DAY ${state.selectedDayIdx+1}`) + (d.date === t ? ' — TODAY' : '');
+    $('#day-date').textContent = fullDateEN(d.date);
+    $('#day-summary').textContent = d.summary || '';
+    const tl = $('#timeline');
+    tl.innerHTML = '';
+    if (!d.events || d.events.length === 0) {
+        tl.innerHTML = '<div class="empty-day">▾ NO EVENTS SCHEDULED — FREE DAY</div>';
+        return;
+    }
+    d.events.forEach((ev, evIdx) => {
+        tl.appendChild(renderEventCard(ev, evIdx));
+    });
+}
+
+function renderEventCard(ev, evIdx) {
+    const cat = eventCategory(ev);
+    const def = CATEGORY_DEF[cat] || CATEGORY_DEF.other;
+    const cls = categoryClass(cat);
+    const startT = eventStartTime(ev);
+    const endT = eventEndTime(ev);
+
+    const item = document.createElement('div');
+    item.className = `tl-item cat-${cls}`;
+    item.dataset.eventIdx = evIdx;
+
+    // 六角形(色担当)
+    const hexWrap = document.createElement('div');
+    hexWrap.className = 'tl-hex-wrap';
+    hexWrap.innerHTML = `
+        <div class="tl-hex">
+            <div class="icon">${def.icon}</div>
+        </div>
+        <div class="hex-tag">${def.label}</div>
+    `;
+    item.appendChild(hexWrap);
+
+    // カード
+    const isTransport = ev.type === 'transport';
+    const isLodging = ev.type === 'lodging';
+    const card = document.createElement('div');
+    card.className = `tl-card${isTransport ? ' transport-card' : ''}`;
+
+    // タイプラベル(色つき小テキスト):移動はキャリアと路線、宿泊はLODGING、その他はカテゴリラベル
+    let typeLabel;
+    if (isTransport) {
+        typeLabel = `${def.label}${ev.carrier ? ' · ' + ev.carrier : ''}${ev.routeName ? ' · ' + ev.routeName : ''}`;
+    } else if (isLodging) {
+        typeLabel = `LODGING — ${def.label}`;
+    } else if (ev.type === 'free') {
+        typeLabel = 'FREE TIME';
+    } else {
+        typeLabel = def.label;
+    }
+
+    const cardName = ev.name || ev.label || (isTransport ? `${ev.from?.name || '—'} → ${ev.to?.name || '—'}` : '—');
+
+    const timeHtml = startT
+        ? `<span class="card-time">${escapeHtml(startT)}${endT ? `<span class="arrow">→</span><span class="end">${escapeHtml(endT)}</span>` : ''}</span>`
+        : '';
+
+    let metaHtml = '';
+    if (isTransport) {
+        metaHtml = `<div class="card-meta"><div class="leg"><strong>${escapeHtml(ev.from?.name || '—')}</strong> <span class="arrow">▶▶</span> <strong>${escapeHtml(ev.to?.name || '—')}</strong></div></div>`;
+    } else if (ev.purpose) {
+        metaHtml = `<div class="card-meta">${escapeHtml(ev.purpose)}</div>`;
+    } else if (ev.notes && ev.type === 'free') {
+        metaHtml = `<div class="card-meta">${escapeHtml(ev.notes)}</div>`;
+    }
+
+    const badges = [];
+    if (ev.companion && COMPANION_DEF[ev.companion]) {
+        const c = COMPANION_DEF[ev.companion];
+        badges.push(`<span class="badge companion-${ev.companion}">${c.icon} ${c.label}</span>`);
+    }
+    if (ev.fare?.amount) {
+        badges.push(`<span class="badge fare">${ev.fare.amount.toLocaleString()} ${escapeHtml(ev.fare.currency || '')}</span>`);
+    }
+    if (ev.admission && (ev.admission.amount === 0 || ev.admission.amount)) {
+        const a = ev.admission.amount === 0 ? 'FREE' : `${ev.admission.amount.toLocaleString()} ${escapeHtml(ev.admission.currency || '')}`;
+        badges.push(`<span class="badge admission">⛛ ${a}</span>`);
+    }
+    const badgesHtml = badges.length ? `<div class="card-row">${badges.join('')}</div>` : '';
+
+    const details = buildDetailRows(ev);
+    const hasDetails = details.rows.length > 0 || ev.notes;
+    const detailHtml = hasDetails ? `
+        <div class="detail">
+            <div class="detail-block">
+                ${details.rows.length ? `<div class="detail-grid">${details.rows.join('')}</div>` : ''}
+                ${ev.notes ? `<div class="notes">${escapeHtml(ev.notes)}</div>` : ''}
+            </div>
+        </div>
+    ` : '';
+    const expandHint = hasDetails ? `<span class="expand-hint">DETAIL</span>` : '';
+
+    card.innerHTML = `
+        <div class="card-head">
+            ${timeHtml}
+            <span class="card-type">${escapeHtml(typeLabel)}</span>
+        </div>
+        <div class="card-name">${escapeHtml(cardName)}</div>
+        ${metaHtml}
+        ${badgesHtml}
+        ${detailHtml}
+        ${expandHint}
+    `;
+    if (hasDetails) {
+        card.addEventListener('click', (e) => {
+            // 詳細展開と双方向ハイライトの併用
+            card.classList.toggle('expanded');
+        });
+    }
+    // マウスホバーで地図側マーカーを強調(双方向リンク)
+    item.addEventListener('mouseenter', () => highlightMarker(evIdx, true));
+    item.addEventListener('mouseleave', () => highlightMarker(evIdx, false));
+    item.appendChild(card);
+    return item;
+}
+
+function buildDetailRows(ev) {
+    const rows = [];
+    function row(k, v) {
+        if (v === undefined || v === null || v === '') return;
+        rows.push(`<div class="k">${escapeHtml(k)}</div><div class="v">${v}</div>`);
+    }
+    if (ev.address)      row('Address', escapeHtml(ev.address));
+    if (ev.hours)        row('Hours', escapeHtml(ev.hours));
+    if (ev.url)          row('Map', `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer">OPEN ↗</a>`);
+    if (ev.type === 'transport' && ev.from?.tz && ev.to?.tz && ev.from.tz !== ev.to.tz) {
+        row('TZ Change', `${escapeHtml(ev.from.tz)} → ${escapeHtml(ev.to.tz)}`);
+    }
+    if (ev.coord) row('Coords', `${ev.coord[0].toFixed(3)}°, ${ev.coord[1].toFixed(3)}°`);
+    return { rows };
+}
+
+// ──────────────── 地図(Leaflet ベース) ────────────────
+//
+// 設計:
+// - Leaflet 1.9.4 + CARTO Dark Matter タイル(無料・登録不要)
+// - タイルにCSSフィルターでcyan寄りに着色 → 計器盤の世界観
+// - マーカーは divIcon (HTMLマーカー)で自前描画。番号付き、移動手段別の色
+// - 接続線(polyline)は移動手段ごとに色とdasharrayを変える
+// - マーカータップ → タイムラインの該当カードへスクロール&ハイライト
+// - その日のbboxに自動fitBounds(余白あり)
+// - 太平洋またぎは廃止 → DAY 01/15は地上活動側に焦点
+//
+let __leafletMap = null;
+let __markerLayer = null;
+let __lineLayer = null;
+let __markerByEventIdx = new Map();   // eventIdx → {marker, leg}  (legは transport の場合 'from'|'to')
+
+// 移動手段別の色(マーカーと線の両方で使用)
+function modeColor(mode) {
+    const m = {
+        flight:   { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.65)' },
+        rail:     { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.55)' },
+        bus:      { color: '#f39c12', glow: 'rgba(243, 156, 18, 0.55)' },
+        host_car: { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.55)' },
+        ferry:    { color: '#60a5fa', glow: 'rgba(96, 165, 250, 0.55)' },
+        subway:   { color: '#a78bfa', glow: 'rgba(167, 139, 250, 0.55)' },
+        taxi:     { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.5)' },
+        walk:     { color: '#94a3b8', glow: 'rgba(148, 163, 184, 0.4)' },
+    };
+    return m[mode] || { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.5)' };
+}
+// 訪問先カテゴリ別の色
+function placeColor(cat) {
+    const m = {
+        study:       { color: '#60a5fa', glow: 'rgba(96, 165, 250, 0.55)' },
+        sightseeing: { color: '#f39c12', glow: 'rgba(243, 156, 18, 0.55)' },
+        meal:        { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.55)' },
+        play:        { color: '#fb7185', glow: 'rgba(251, 113, 133, 0.55)' },
+        shopping:    { color: '#f472b6', glow: 'rgba(244, 114, 182, 0.5)' },
+        conference:  { color: '#a78bfa', glow: 'rgba(167, 139, 250, 0.55)' },
+        sport:       { color: '#4ade80', glow: 'rgba(74, 222, 128, 0.55)' },
+        rest:        { color: '#94a3b8', glow: 'rgba(148, 163, 184, 0.4)' },
+    };
+    return m[cat] || { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.5)' };
+}
+// イベントの代表色を返す
+function eventMarkerColor(ev, leg) {
+    if (ev.type === 'transport') {
+        // transport は from / to 両方に同色マーカー(移動手段の色)
+        return modeColor(ev.mode);
+    }
+    if (ev.type === 'lodging') return { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.5)' };
+    if (ev.type === 'place')   return placeColor(ev.category);
+    return { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.5)' };
+}
+
+function ensureLeafletMap() {
+    if (__leafletMap) return __leafletMap;
+    if (typeof L === 'undefined') {
+        console.error('[ITN] Leaflet (L) is not loaded — map will be unavailable.');
+        const el = document.getElementById('leaflet-map');
+        if (el && !el.dataset.errorShown) {
+            el.dataset.errorShown = '1';
+            el.innerHTML = `
+                <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;color:rgba(255,107,107,0.85);font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.18em;text-align:center;padding:20px;">
+                    <div style="margin-bottom:8px;">⚠ MAP ENGINE NOT LOADED</div>
+                    <div style="font-size:9px;color:rgba(226,232,240,0.5);letter-spacing:0.1em;line-height:1.6;">
+                        Leaflet.js failed to load.<br>
+                        Check network connection or CSP settings.<br>
+                        Timeline below remains functional.
+                    </div>
+                </div>
+            `;
+        }
+        return null;
+    }
+    __leafletMap = L.map('leaflet-map', {
+        zoomControl: false,
+        attributionControl: true,
+        worldCopyJump: false,
+        minZoom: 2,
+        maxZoom: 18,
+        scrollWheelZoom: true,
+        touchZoom: true,
+        boxZoom: false,
+        keyboard: false,
+    }).setView([35, 0], 2);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(__leafletMap);
+
+    __markerLayer = L.layerGroup().addTo(__leafletMap);
+    __lineLayer = L.layerGroup().addTo(__leafletMap);
+
+    const updateInfo = () => {
+        const z = __leafletMap.getZoom();
+        const c = __leafletMap.getCenter();
+        $('#map-zoom-info').textContent = `Z${z.toFixed(0)} · ${z >= 10 ? 'CITY' : (z >= 6 ? 'REGION' : 'WORLD')}`;
+        $('#map-coords').textContent =
+            `${Math.abs(c.lat).toFixed(2)}°${c.lat>=0?'N':'S'} / ${Math.abs(c.lng).toFixed(2)}°${c.lng>=0?'E':'W'}`;
+    };
+    __leafletMap.on('zoomend moveend', updateInfo);
+    return __leafletMap;
+}
+
+function drawMap() {
+    const map = ensureLeafletMap();
+    if (!map) return;   // Leaflet読み込み失敗時は無視
+    __markerLayer.clearLayers();
+    __lineLayer.clearLayers();
+    __markerByEventIdx.clear();
+
+    const day = state.itn.days[state.selectedDayIdx];
+    if (!day) return;
+
+    // その日のwaypoint一覧を作る:eventIdx + legも持たせて、双方向リンクできるようにする
+    const wps = [];   // { lat, lng, label, eventIdx, leg, ev }
+    (day.events || []).forEach((ev, eventIdx) => {
+        if (ev.type === 'place' && ev.coord) {
+            wps.push({ lat: ev.coord[0], lng: ev.coord[1], label: ev.name, eventIdx, leg: 'place', ev });
+        } else if (ev.type === 'lodging' && ev.coord) {
+            wps.push({ lat: ev.coord[0], lng: ev.coord[1], label: ev.name, eventIdx, leg: 'lodging', ev });
+        } else if (ev.type === 'transport') {
+            if (ev.from?.coord) wps.push({ lat: ev.from.coord[0], lng: ev.from.coord[1], label: ev.from.name, eventIdx, leg: 'from', ev });
+            if (ev.to?.coord)   wps.push({ lat: ev.to.coord[0],   lng: ev.to.coord[1],   label: ev.to.name,   eventIdx, leg: 'to',   ev });
+        }
+    });
+
+    // ────── 接続線(移動手段で色分け) ──────
+    // transport の from→to を各々のpolylineに
+    (day.events || []).forEach((ev) => {
+        if (ev.type !== 'transport') return;
+        if (!ev.from?.coord || !ev.to?.coord) return;
+        const mode = ev.mode || 'default';
+        const cls = `transport-line mode-${mode}`;
+        // glow層
+        L.polyline([ev.from.coord, ev.to.coord], {
+            className: 'transport-line-glow',
+            color: '#00f2fe',
+            weight: 7,
+            opacity: 0.18,
+            interactive: false
+        }).addTo(__lineLayer);
+        // 本体線
+        L.polyline([ev.from.coord, ev.to.coord], {
+            className: cls,
+            weight: 2,
+            opacity: 0.95,
+            interactive: false
+        }).addTo(__lineLayer);
+    });
+
+    // ────── マーカー描画 ──────
+    // 同座標の連続を圧縮して番号を振る(同じ場所が複数イベントに渡る場合を間引き)
+    let visibleNum = 0;
+    const seenKeys = new Map();   // 'lat,lng' → 既に振った番号
+    wps.forEach((w) => {
+        const key = `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`;
+        let num;
+        if (seenKeys.has(key)) {
+            num = seenKeys.get(key);
+        } else {
+            visibleNum += 1;
+            num = visibleNum;
+            seenKeys.set(key, num);
+        }
+        const mc = eventMarkerColor(w.ev, w.leg);
+
+        const html = `
+            <div class="marker-inner" style="--marker-color: ${mc.color}; --marker-glow: ${mc.glow};">
+                <span class="marker-num" style="color: ${mc.color}; text-shadow: 0 0 4px ${mc.glow};">${num}</span>
+            </div>
+            <div class="marker-label" style="--marker-color: ${mc.color}; color: ${mc.color}; border-color: ${mc.color};">${escapeHtml(shortenLabel(w.label))}</div>
+        `;
+        const icon = L.divIcon({
+            className: 'itn-marker',
+            html,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+        });
+        const marker = L.marker([w.lat, w.lng], { icon, riseOnHover: true });
+        marker.on('click', () => {
+            // タイムラインの該当カードへスクロール+ハイライト
+            highlightTimelineCard(w.eventIdx);
+        });
+        marker.on('mouseover', () => {
+            highlightMarker(w.eventIdx, true);
+            const card = document.querySelector(`.tl-item[data-event-idx="${w.eventIdx}"] .tl-card`);
+            if (card) card.classList.add('hovered-from-map');
+        });
+        marker.on('mouseout', () => {
+            highlightMarker(w.eventIdx, false);
+            const card = document.querySelector(`.tl-item[data-event-idx="${w.eventIdx}"] .tl-card`);
+            if (card) card.classList.remove('hovered-from-map');
+        });
+        marker.addTo(__markerLayer);
+
+        // eventIdx → marker の対応を保存(複数legを持つ場合は配列で)
+        if (!__markerByEventIdx.has(w.eventIdx)) __markerByEventIdx.set(w.eventIdx, []);
+        __markerByEventIdx.get(w.eventIdx).push(marker);
+    });
+
+    // ────── 表示範囲(fit) ──────
+    // 太平洋またぎ廃止:DAY 01/15のような出入国日では、
+    //   フライト系のマーカーは「日本側の点と海外側の点」の両方を含む。
+    //   そのまま fitBounds すると太平洋全体が表示されて意味がなくなる。
+    //   → 「地上の活動」側に焦点を合わせる戦略:
+    //     a) 該当日のtransport.modeが flight を含む場合、
+    //        最大密度のあるエリア(クラスタ)を選ぶ。
+    //     b) クラスタ判定:全マーカーから「最頻地域」のマーカー集合だけでfit。
+    if (wps.length === 0) {
+        // 何もない:全体を表示
+        map.setView([20, 0], 2);
+    } else if (wps.length === 1) {
+        map.setView([wps[0].lat, wps[0].lng], 12);
+    } else {
+        const focused = pickFocusGroup(wps);
+        const bounds = L.latLngBounds(focused.map(w => [w.lat, w.lng]));
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    }
+}
+
+// 「地上活動」側に焦点を合わせるためのクラスタ選定
+// アルゴリズム:全waypointの経度spanが大きい(>30°)場合、
+//   経度方向に2つのグループに分けて、人数(waypoint数)の多い方を返す。
+//   これで「太平洋を挟む2地域」のうち、滞在側(マーカー数が多い側)が選ばれる。
+//   経度差が小さい(同じ地域)なら全部使う。
+function pickFocusGroup(wps) {
+    if (wps.length <= 2) return wps;
+    const lons = wps.map(w => w.lng);
+    const minL = Math.min(...lons), maxL = Math.max(...lons);
+    const span = maxL - minL;
+    // 太平洋またぎ的なケース:経度spanが180超 or 太平洋まわりで近い
+    const spanViaPacific = (180 - maxL) + (minL + 180);
+    const isCrossing = span > 60 && spanViaPacific < span;  // ざっくり判定
+    if (span <= 30 && !isCrossing) return wps;
+
+    // 単純な1次元クラスタ:経度の中央値で分け、人数の多い方を返す
+    if (isCrossing) {
+        // 太平洋またぎ:正経度群(東半球)と負経度群(西半球)
+        const east = wps.filter(w => w.lng > 0);
+        const west = wps.filter(w => w.lng < 0);
+        return east.length >= west.length ? east : west;
+    } else {
+        // 単純に経度の中央値で分割
+        const sorted = [...lons].sort((a, b) => a - b);
+        const mid = (sorted[Math.floor(sorted.length/2) - 1] + sorted[Math.floor(sorted.length/2)]) / 2;
+        const left = wps.filter(w => w.lng <= mid);
+        const right = wps.filter(w => w.lng > mid);
+        // 人数差がある方を採用、同数なら全体
+        if (Math.abs(left.length - right.length) >= 2) {
+            return left.length > right.length ? left : right;
+        }
+        return wps;
+    }
+}
+
+function shortenLabel(s) {
+    if (!s) return '';
+    if (s.length <= 18) return s;
+    return s.slice(0, 16) + '…';
+}
+
+// マーカー強調(タイムラインからの呼び出しでも使える)
+function highlightMarker(eventIdx, on) {
+    const arr = __markerByEventIdx.get(eventIdx);
+    if (!arr) return;
+    arr.forEach(m => {
+        const el = m.getElement();
+        if (!el) return;
+        el.classList.toggle('is-active', on);
+    });
+}
+
+// タイムラインカードを強調表示(マーカーからの呼び出し)
+function highlightTimelineCard(eventIdx) {
+    document.querySelectorAll('.tl-item.flash').forEach(n => n.classList.remove('flash'));
+    const item = document.querySelector(`.tl-item[data-event-idx="${eventIdx}"]`);
+    if (!item) return;
+    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.classList.add('flash');
+    setTimeout(() => item.classList.remove('flash'), 1600);
+}
+
+function mapZoomBy(delta) {
+    if (!__leafletMap || typeof L === 'undefined') return;
+    __leafletMap.setZoom(__leafletMap.getZoom() + delta, { animate: true });
+}
+function mapResetView() {
+    drawMap();   // 現在の日のbboxにfit直し
+}
+
+// ──────────────── アクション ────────────────
+function exportItn() {
+    const json = JSON.stringify(state.itn, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = (state.itn.meta?.title || 'itinerary').replace(/[^a-z0-9一-龥ぁ-んァ-ヴー\-_]/gi, '_').slice(0, 40);
+    a.href = url;
+    a.download = `${safeName}.itn.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('EXPORTED');
+}
+function importItn() { $('#file-input').click(); }
+async function loadTemplate() {
+    if (state.itn && !await ckConfirm('Discard the current itinerary and load a blank template?')) return;
+    const today = new Date();
+    const start = new Date(today.getTime() + 30*86400000);
+    const days = [];
+    for (let i = 0; i < 5; i++) {
+        const d = new Date(start.getTime() + i*86400000);
+        days.push({
+            date: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
+            dayLabel: `DAY ${String(i+1).padStart(2,'0')}`,
+            summary: i === 0 ? 'Departure' : i === 4 ? 'Return' : '',
+            events: []
+        });
+    }
+    loadItn({
+        format: 'itn-v1',
+        meta: { title: 'New Trip', subtitle: '', operator: '', startDate: days[0].date, endDate: days[days.length-1].date, homeTimezone: 'Asia/Tokyo', destTimezone: 'UTC' },
+        days
+    });
+    showToast('TEMPLATE LOADED');
+}
+async function reloadSample() {
+    if (await ckConfirm('Reload the sample (Vancouver Study Tour)?')) {
+        loadItn(SAMPLE_ITN);
+        showToast('SAMPLE RELOADED');
+    }
+}
+async function purgeAll() {
+    const ok = await ckConfirm('PURGE ALL — this will discard all itinerary data and load a single empty day. Continue?', { danger: true, okText: 'PURGE' });
+    if (!ok) return;
+    loadItn({
+        format: 'itn-v1',
+        meta: { title: '', subtitle: '', operator: '', startDate: '', endDate: '' },
+        days: [ { date: todayIso(), dayLabel: 'DAY 01', summary: '', events: [] } ]
+    });
+    showToast('ALL DATA PURGED', false);
+}
+
+function closeModal() {
+    // STEP 1ではダミー実装。本体統合時はモーダルを閉じる動作に差し替え。
+    showToast('CLOSE (no-op in standalone)', false);
+}
+
+// ──────────────── 起動 ────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => document.body.classList.add('css-ready'));
+
+    $('#btn-export').addEventListener('click', exportItn);
+    $('#btn-import').addEventListener('click', importItn);
+    $('#btn-template').addEventListener('click', loadTemplate);
+    $('#btn-sample').addEventListener('click', reloadSample);
+    $('#btn-purge').addEventListener('click', purgeAll);
+    $('#btn-close').addEventListener('click', closeModal);
+
+    $('#map-zoom-in').addEventListener('click', () => mapZoomBy(1));
+    $('#map-zoom-out').addEventListener('click', () => mapZoomBy(-1));
+    $('#map-reset').addEventListener('click', mapResetView);
+
+    $('#file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            if (parsed.format !== 'itn-v1') {
+                showToast('Format not itn-v1', true);
+                return;
+            }
+            loadItn(parsed);
+            showToast('IMPORTED');
+        } catch (err) {
+            console.error(err);
+            showToast('Import failed', true);
+        } finally {
+            e.target.value = '';
+        }
+    });
+
+    // ESC でクローズ・モーダル外タップでクローズ(STEP 1でも体験させる)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            // confirm優先
+            if ($('#confirm-overlay').classList.contains('active')) {
+                $('#confirm-overlay').classList.remove('active');
+                return;
+            }
+            closeModal();
+        }
+    });
+    document.addEventListener('mousedown', (e) => {
+        const stage = $('#stage');
+        const conf = $('#confirm-overlay');
+        if (conf.classList.contains('active')) return;
+        // stageの内側のクリックは無視。stageの外(背景)クリックでクローズ
+        if (!stage.contains(e.target)) closeModal();
+    });
+
+    loadItn(SAMPLE_ITN);
+
+    // Leafletのサイズ確定:DOM描画後に呼ぶ必要あり
+    setTimeout(() => {
+        if (__leafletMap) {
+            __leafletMap.invalidateSize();
+            drawMap();  // fit再計算
+        }
+    }, 100);
+
+    let resizeTid;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTid);
+        resizeTid = setTimeout(() => {
+            if (__leafletMap) __leafletMap.invalidateSize();
+            drawMap();
+        }, 200);
+    });
+});
+</script>
+</body>
+</html>
