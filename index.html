@@ -270,16 +270,12 @@ body::after {
     background: #050a16;
 }
 
-/* Leafletタイル全体に計器盤フィルター
-   CARTO Dark Matterは元から暗いダーク基調だが、cyan寄りに染めて世界観統合
-   - hue-rotate: cyanの方向に色相シフト
-   - saturate: 彩度を強めに
-   - brightness: 少し落として星空感
-   - contrast: 線をシャープに */
+/* タイルフィルターは外す — 地名のシャープさ最優先。
+   計器盤らしさは枠装飾(走査線・グリッドオーバーレイ・コーナー)で担保する */
 .leaflet-tile-pane {
-    filter: brightness(0.78) contrast(1.15) saturate(1.45) hue-rotate(165deg);
+    /* filter なし */
 }
-/* 走査線オーバーレイ(地図の上に重ねる) */
+/* 走査線オーバーレイ(地図の上に重ねる) — タイルが見やすくなったので控えめに */
 .map-section::before {
     content: '';
     position: absolute;
@@ -288,12 +284,13 @@ body::after {
         0deg,
         transparent,
         transparent 2px,
-        rgba(0, 0, 0, 0.22) 2px,
-        rgba(0, 0, 0, 0.22) 4px
+        rgba(0, 0, 0, 0.12) 2px,
+        rgba(0, 0, 0, 0.12) 4px
     );
     pointer-events: none;
     z-index: 500;
-    opacity: 0.5;
+    opacity: 0.4;
+    mix-blend-mode: multiply;
 }
 /* 流れる走査線 — マップラッパーの中で、マップの高さに対して animate */
 .map-svg-wrap::after {
@@ -315,15 +312,15 @@ body::after {
     100% { top: 100%; }
 }
 
-/* グリッドオーバーレイ — 計器盤らしさ */
+/* グリッドオーバーレイ — 計器盤らしさを最小限に */
 .map-grid-overlay {
     position: absolute;
     inset: 0;
     pointer-events: none;
     z-index: 502;
     background-image:
-        linear-gradient(rgba(0, 242, 254, 0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 242, 254, 0.06) 1px, transparent 1px);
+        linear-gradient(rgba(0, 242, 254, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 242, 254, 0.04) 1px, transparent 1px);
     background-size: 80px 80px;
     mix-blend-mode: screen;
 }
@@ -471,33 +468,7 @@ body::after {
 .transport-line.mode-default   { stroke: #00f2fe; stroke-dasharray: 4 4; }
 .transport-line-glow { stroke: #00f2fe; stroke-opacity: 0.18; stroke-linecap: round; }
 
-/* ──────────── STATS BAR ──────────── */
-.stats-bar {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1px;
-    background: var(--card-border);
-    margin-bottom: 22px;
-}
-.stat-cell {
-    background: var(--bg-deep);
-    padding: 10px 12px;
-    font-family: var(--text-mono);
-    font-size: 9px;
-    letter-spacing: 0.18em;
-    color: rgba(226, 232, 240, 0.4);
-    text-transform: uppercase;
-}
-.stat-cell .val {
-    display: block;
-    font-size: 16px;
-    font-weight: 500;
-    color: #e2e8f0;
-    margin-top: 4px;
-    letter-spacing: 0.04em;
-}
-.stat-cell .val.accent { color: var(--accent-cyan); text-shadow: 0 0 12px rgba(0, 242, 254, 0.3); }
-.stat-cell .val.gold { color: var(--accent-gold); }
+/* (旧 stats-bar CSS は廃止) */
 
 /* ──────────── DAY SCRUBBER ──────────── */
 .section-header {
@@ -610,15 +581,16 @@ body::after {
     position: relative;
     padding-left: 4px;
 }
-.timeline .tl-spine {
+/* spine(縦点線):各 tl-hex-wrap の内部に absolute で配置することで
+   六角形と必ず中心が一致する。タイムライン全体で1本のspineではなく、
+   各アイテムごとに描いてつなげる方式。
+   六角形(50px)を中央に挟んだ上下が点線になる。 */
+.tl-hex-wrap::before,
+.tl-hex-wrap::after {
+    content: '';
     position: absolute;
-    /*
-      tl-hex-wrap は width:56px、その中央に六角形(50px)が配置されている。
-      timelineの padding-left は 4px。なので spine は left = 4 + 56/2 = 32px。
-      モバイルではwrapが50pxになるので、CSS変数で切替可能に。
-    */
-    left: var(--spine-x, 32px);
-    top: 12px; bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
     width: 1px;
     background: repeating-linear-gradient(
         to bottom,
@@ -628,6 +600,20 @@ body::after {
     pointer-events: none;
     z-index: 0;
 }
+.tl-hex-wrap::before {
+    /* 上半分:itemの上端から六角形の上端まで */
+    top: 0;
+    height: calc(50% - 25px);  /* 50pxの六角形の半分 = 25px */
+}
+.tl-hex-wrap::after {
+    /* 下半分:六角形の下端から itemの下端まで(ネームプレート下まで) */
+    top: calc(50% + 25px);
+    bottom: 0;
+}
+/* 最初のアイテムは上半分のspine不要 */
+.tl-item:first-child .tl-hex-wrap::before { display: none; }
+/* 最後のアイテムは下半分のspine不要 */
+.tl-item:last-child .tl-hex-wrap::after { display: none; }
 
 .tl-item {
     position: relative;
@@ -687,19 +673,19 @@ body::after {
     filter: drop-shadow(0 0 6px var(--cat-glow, rgba(0, 242, 254, 0.5)));
 }
 /*
-  ネームプレート:長方形をそのまま表示する(六角形にクリップしない)
-  位置は六角形の下端と少し重なるあたり。長方形が下にはみ出して、
-  「六角形 + 下に飛び出した小さなプレート」の形になる。
-  - .tl-hex は overflow: visible (clip-pathは中身ではなく self に効くので、
-    nameplate は .tl-hex-wrap 直下に置く必要がある)
+  ネームプレート:完全な長方形として、六角形の下端と少し重なる位置に置く
+  添付の参考画像のように、六角形の下三角の領域にプレートが食い込んで見える形。
+  位置のキモ:
+  - 六角形は 50px、その下三角の高さは ~12.5px (clip-path 75% から 100% の幅)
+  - bottom: 4px くらいで、プレートが下三角の中央あたりを横切る
 */
 .tl-hex-wrap .hex-tag {
     position: absolute;
-    bottom: -3px;       /* 六角形の下端より少し下、長方形が顔を出す */
+    bottom: 2px;        /* 六角形の下端の少し内側 — 下三角と重なる */
     left: 50%;
     transform: translateX(-50%);
     font-family: var(--text-mono);
-    font-size: 7.5px;
+    font-size: 8px;
     font-weight: 500;
     letter-spacing: 0.18em;
     color: var(--cat-color, var(--accent-cyan));
@@ -708,9 +694,9 @@ body::after {
     border: 1px solid var(--cat-color, var(--accent-cyan));
     border-radius: 1px;
     line-height: 1;
-    z-index: 5;     /* 六角形より上 */
+    z-index: 5;       /* 六角形より上 */
     white-space: nowrap;
-    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
 }
 
 /* カード — 左の角を六角形に向かって切り落とし、六角形が食い込む */
@@ -1143,19 +1129,37 @@ body::after {
     .modal-stage { padding: 20px 14px 60px; }
     .modal-header { padding: 0 12px; margin-bottom: 18px; }
     .modal-header h2 { font-size: 13px; letter-spacing: 0.3em; }
-    .stats-bar { grid-template-columns: repeat(2, 1fr); }
-    .map-svg-wrap { padding-top: 75%; }
     .day-header .day-date { font-size: 18px; }
     .day-header { padding: 12px 14px; }
-    .timeline { --spine-x: 29px; }  /* mobile wrap width 50 → 4 + 50/2 = 29 */
-    .timeline .tl-spine { left: var(--spine-x); }
     .tl-hex-wrap { width: 50px; }
     .tl-hex { width: 44px; height: 44px; }
     .tl-hex .icon { font-size: 17px; }
-    .tl-hex .hex-tag { font-size: 6px; }
+    .tl-hex-wrap .hex-tag { font-size: 7px; }
     .tl-card { padding: 11px 12px 11px 18px; }
     .tl-card .card-name { font-size: 14px; }
     .map-controls button { width: 28px; height: 28px; font-size: 13px; }
+
+    /* spine 再計算:六角形 44px → 半分 22px */
+    .tl-hex-wrap::before { height: calc(50% - 22px); }
+    .tl-hex-wrap::after  { top: calc(50% + 22px); }
+
+    /*
+      スマホ:スティッキー地図。
+      地図を画面上部に固定して、行程表をスクロール時にも見え続ける。
+      行程表のカードをタップすると、画面上部の地図のマーカーが反応する。
+    */
+    .map-section {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        margin-bottom: 14px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6),
+                    0 0 40px rgba(0, 242, 254, 0.05);
+    }
+    .map-svg-wrap { padding-top: 60%; }   /* 地図高さを抑えて、タイムラインに余白 */
+
+    /* スクロール時にカードが地図の下に隠れないよう、scroll-margin で逃がす */
+    .tl-item { scroll-margin-top: calc(60vw + 24px); }
 }
 </style>
 </head>
@@ -1198,13 +1202,7 @@ body::after {
         <div class="map-coords" id="map-coords">— / —</div>
     </div>
 
-    <!-- STATS BAR -->
-    <div class="stats-bar">
-        <div class="stat-cell">DURATION<span class="val accent" id="stat-duration">— DAYS</span></div>
-        <div class="stat-cell">EVENTS<span class="val" id="stat-events">—</span></div>
-        <div class="stat-cell">WAYPOINTS<span class="val" id="stat-waypoints">—</span></div>
-        <div class="stat-cell">RANGE<span class="val gold" id="stat-range">—</span></div>
-    </div>
+    <!-- (旧 stats-bar は廃止 — 旅全体の進行は本体トップが担当する) -->
 
     <!-- DAY SCRUBBER -->
     <div class="section-header">
@@ -1217,7 +1215,6 @@ body::after {
         <span class="label">TIMELINE</span>
     </div>
     <div class="timeline" id="timeline-wrap">
-        <div class="tl-spine"></div>
         <div id="timeline"></div>
     </div>
 
@@ -1579,7 +1576,6 @@ function pickInitialDay(itn) {
 // ──────────────── レンダリング ────────────────
 function renderAll() {
     renderHeader();
-    renderStats();
     renderScrubber();
     renderDay();
     drawMap();
@@ -1588,31 +1584,6 @@ function renderHeader() {
     const m = state.itn.meta || {};
     $('#mission-subtitle').textContent = `${m.subtitle || ''}${m.title ? ' · ' + m.title : ''}`.trim();
     $('#mission-operator').textContent = `OPERATOR: ${m.operator || '—'}`.toUpperCase();
-}
-function renderStats() {
-    const days = state.itn.days || [];
-    const evCount = days.reduce((s, d) => s + (d.events?.length || 0), 0);
-    const wpCount = days.reduce((s, d) => s + (d.events?.reduce((ss, ev) => ss + eventCoords(ev).length, 0) || 0), 0);
-    $('#stat-duration').textContent = `${days.length} DAYS`;
-    $('#stat-events').textContent = evCount;
-    $('#stat-waypoints').textContent = wpCount;
-
-    const allCoords = [];
-    days.forEach(d => d.events?.forEach(ev => eventCoords(ev).forEach(c => allCoords.push(c.coord))));
-    let maxDist = 0;
-    if (allCoords.length >= 2) {
-        let minLat=Infinity, maxLat=-Infinity, minLon=Infinity, maxLon=-Infinity;
-        allCoords.forEach(([la, lo]) => {
-            minLat = Math.min(minLat, la); maxLat = Math.max(maxLat, la);
-            minLon = Math.min(minLon, lo); maxLon = Math.max(maxLon, lo);
-        });
-        const R = 6371;
-        const dLat = (maxLat - minLat) * Math.PI / 180;
-        const dLon = (maxLon - minLon) * Math.PI / 180;
-        const a = Math.sin(dLat/2)**2 + Math.cos(minLat*Math.PI/180) * Math.cos(maxLat*Math.PI/180) * Math.sin(dLon/2)**2;
-        maxDist = 2 * R * Math.asin(Math.sqrt(a));
-    }
-    $('#stat-range').textContent = maxDist > 0 ? `${Math.round(maxDist).toLocaleString()} KM` : '—';
 }
 
 function renderScrubber() {
@@ -1838,6 +1809,16 @@ function eventMarkerColor(ev, leg) {
     return { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.5)' };
 }
 
+// マーカー統合時の代表選定優先度:place > lodging > transport
+// 「ここで何が起こるか」が一番重要なので、実体のあるplace(訪問先)が最優先。
+// 次いで宿泊、最後に通過点としての交通機関。
+function priorityOf(ev) {
+    if (ev.type === 'place')     return 3;
+    if (ev.type === 'lodging')   return 2;
+    if (ev.type === 'transport') return 1;
+    return 0;
+}
+
 function ensureLeafletMap() {
     if (__leafletMap) return __leafletMap;
     if (typeof L === 'undefined') {
@@ -1937,27 +1918,57 @@ function drawMap() {
         }).addTo(__lineLayer);
     });
 
-    // ────── マーカー描画 ──────
-    // 同座標の連続を圧縮して番号を振る(同じ場所が複数イベントに渡る場合を間引き)
-    let visibleNum = 0;
-    const seenKeys = new Map();   // 'lat,lng' → 既に振った番号
+    // ────── マーカー描画(同一座標は統合) ──────
+    //
+    // 設計:
+    // 1. 緯度経度4桁丸めで「同一地点」と見なす
+    // 2. 同一地点に紐づく複数イベントは1マーカーに統合
+    // 3. 番号は「来訪順の最初の番号」のみ表示(重複番号は廃止)
+    // 4. ラベルは代表1つだけ(最初のイベントのもの)
+    // 5. クリック時は最初のeventIdxへスクロール
+    // 6. ホバーは登録された全イベントのカードを強調
+    // 7. マーカーの色は「最初のイベント」の色を使用(優先順:place > lodging > transport)
+    //
+    const groupedByCoord = new Map();   // 'lat,lng' → { lat, lng, num, label, color, glow, eventIdxs[], representativeEv }
+    let nextNum = 0;
+
     wps.forEach((w) => {
         const key = `${w.lat.toFixed(4)},${w.lng.toFixed(4)}`;
-        let num;
-        if (seenKeys.has(key)) {
-            num = seenKeys.get(key);
+        if (groupedByCoord.has(key)) {
+            const g = groupedByCoord.get(key);
+            // eventIdx を追加(重複は無視)
+            if (!g.eventIdxs.includes(w.eventIdx)) g.eventIdxs.push(w.eventIdx);
+            // 代表色は「より重要な種類」を採用(place > lodging > transport)
+            const newPriority = priorityOf(w.ev);
+            if (newPriority > g.priority) {
+                const mc = eventMarkerColor(w.ev, w.leg);
+                g.color = mc.color;
+                g.glow = mc.glow;
+                g.label = w.label;
+                g.priority = newPriority;
+            }
         } else {
-            visibleNum += 1;
-            num = visibleNum;
-            seenKeys.set(key, num);
+            nextNum += 1;
+            const mc = eventMarkerColor(w.ev, w.leg);
+            groupedByCoord.set(key, {
+                lat: w.lat,
+                lng: w.lng,
+                num: nextNum,
+                label: w.label,
+                color: mc.color,
+                glow: mc.glow,
+                eventIdxs: [w.eventIdx],
+                priority: priorityOf(w.ev)
+            });
         }
-        const mc = eventMarkerColor(w.ev, w.leg);
+    });
 
+    groupedByCoord.forEach((g) => {
         const html = `
-            <div class="marker-inner" style="--marker-color: ${mc.color}; --marker-glow: ${mc.glow};">
-                <span class="marker-num" style="color: ${mc.color}; text-shadow: 0 0 4px ${mc.glow};">${num}</span>
+            <div class="marker-inner" style="--marker-color: ${g.color}; --marker-glow: ${g.glow};">
+                <span class="marker-num" style="color: ${g.color}; text-shadow: 0 0 4px ${g.glow};">${g.num}</span>
             </div>
-            <div class="marker-label" style="--marker-color: ${mc.color}; color: ${mc.color}; border-color: ${mc.color};">${escapeHtml(shortenLabel(w.label))}</div>
+            <div class="marker-label" style="--marker-color: ${g.color}; color: ${g.color}; border-color: ${g.color};">${escapeHtml(shortenLabel(g.label))}</div>
         `;
         const icon = L.divIcon({
             className: 'itn-marker',
@@ -1965,26 +1976,36 @@ function drawMap() {
             iconSize: [28, 28],
             iconAnchor: [14, 14]
         });
-        const marker = L.marker([w.lat, w.lng], { icon, riseOnHover: true });
+        const marker = L.marker([g.lat, g.lng], { icon, riseOnHover: true });
+
+        // クリック:代表(最初の)イベントカードへスクロール
         marker.on('click', () => {
-            // タイムラインの該当カードへスクロール+ハイライト
-            highlightTimelineCard(w.eventIdx);
+            if (g.eventIdxs.length > 0) highlightTimelineCard(g.eventIdxs[0]);
         });
+        // ホバー:全関連カードを強調
         marker.on('mouseover', () => {
-            highlightMarker(w.eventIdx, true);
-            const card = document.querySelector(`.tl-item[data-event-idx="${w.eventIdx}"] .tl-card`);
-            if (card) card.classList.add('hovered-from-map');
+            const el = marker.getElement();
+            if (el) el.classList.add('is-active');
+            g.eventIdxs.forEach(idx => {
+                const card = document.querySelector(`.tl-item[data-event-idx="${idx}"] .tl-card`);
+                if (card) card.classList.add('hovered-from-map');
+            });
         });
         marker.on('mouseout', () => {
-            highlightMarker(w.eventIdx, false);
-            const card = document.querySelector(`.tl-item[data-event-idx="${w.eventIdx}"] .tl-card`);
-            if (card) card.classList.remove('hovered-from-map');
+            const el = marker.getElement();
+            if (el) el.classList.remove('is-active');
+            g.eventIdxs.forEach(idx => {
+                const card = document.querySelector(`.tl-item[data-event-idx="${idx}"] .tl-card`);
+                if (card) card.classList.remove('hovered-from-map');
+            });
         });
         marker.addTo(__markerLayer);
 
-        // eventIdx → marker の対応を保存(複数legを持つ場合は配列で)
-        if (!__markerByEventIdx.has(w.eventIdx)) __markerByEventIdx.set(w.eventIdx, []);
-        __markerByEventIdx.get(w.eventIdx).push(marker);
+        // タイムライン → マーカー の逆引き登録(全eventIdxs に紐づける)
+        g.eventIdxs.forEach(idx => {
+            if (!__markerByEventIdx.has(idx)) __markerByEventIdx.set(idx, []);
+            __markerByEventIdx.get(idx).push(marker);
+        });
     });
 
     // ────── 表示範囲(fit) ──────
