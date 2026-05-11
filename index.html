@@ -280,11 +280,10 @@ body::after {
 
 /*
   Voyagerは明るいタイル → invertでダーク化、hue-rotateでcyan寄りに。
-  invert(0.95) で完全には反転させず、コントラストを緩和。
-  hue-rotate(180deg) で色相を反転(invertと組み合わせて自然な見た目に)。
+  v6: 文字を明るく見せるため invert を強め(1.0)、brightnessを少し上げる
 */
 .leaflet-tile-pane {
-    filter: invert(0.92) hue-rotate(180deg) saturate(0.85) brightness(0.95) contrast(0.95);
+    filter: invert(1) hue-rotate(180deg) saturate(0.78) brightness(1.05) contrast(0.92);
 }
 /* マーカーや線は filter の影響を受けないよう除外 */
 .leaflet-marker-pane,
@@ -410,6 +409,13 @@ body::after {
   - クリックでフォーカスは継続(別マーカーをクリックするまで保持)
   - フォーカス中マーカーは z-index 最前面
 */
+/* Leafletのマーカーアイコン:overflow visibleを強制(L字スコープのため) */
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-marker-icon.itn-marker {
+    overflow: visible !important;
+}
+
 .itn-marker {
     width: 32px !important;
     height: 32px !important;
@@ -417,7 +423,7 @@ body::after {
     margin-top: -16px !important;
     pointer-events: auto;
     cursor: pointer;
-    overflow: visible !important;  /* スコープ・プレートが外側に出るので */
+    overflow: visible !important;
 }
 .itn-marker .marker-inner {
     width: 100%; height: 100%;
@@ -462,10 +468,30 @@ body::after {
     opacity: 0;
     transition: opacity 0.22s, transform 0.22s cubic-bezier(0.5, -0.2, 0.3, 1.4);
 }
-.itn-marker .scope-tl { top: -8px;  left: -8px;  border-top: 1.5px solid var(--marker-color);    border-left: 1.5px solid var(--marker-color); transform: translate(-6px, -6px); }
-.itn-marker .scope-tr { top: -8px;  right: -8px; border-top: 1.5px solid var(--marker-color);    border-right: 1.5px solid var(--marker-color); transform: translate(6px, -6px); }
-.itn-marker .scope-bl { bottom: -8px;left: -8px; border-bottom: 1.5px solid var(--marker-color); border-left: 1.5px solid var(--marker-color); transform: translate(-6px, 6px); }
-.itn-marker .scope-br { bottom: -8px;right: -8px;border-bottom: 1.5px solid var(--marker-color); border-right: 1.5px solid var(--marker-color); transform: translate(6px, 6px); }
+.itn-marker .scope-tl {
+    top: -8px;  left: -8px;
+    border-top-width: 1.5px; border-top-style: solid;
+    border-left-width: 1.5px; border-left-style: solid;
+    transform: translate(-6px, -6px);
+}
+.itn-marker .scope-tr {
+    top: -8px;  right: -8px;
+    border-top-width: 1.5px; border-top-style: solid;
+    border-right-width: 1.5px; border-right-style: solid;
+    transform: translate(6px, -6px);
+}
+.itn-marker .scope-bl {
+    bottom: -8px; left: -8px;
+    border-bottom-width: 1.5px; border-bottom-style: solid;
+    border-left-width: 1.5px; border-left-style: solid;
+    transform: translate(-6px, 6px);
+}
+.itn-marker .scope-br {
+    bottom: -8px; right: -8px;
+    border-bottom-width: 1.5px; border-bottom-style: solid;
+    border-right-width: 1.5px; border-right-style: solid;
+    transform: translate(6px, 6px);
+}
 
 .itn-marker.is-active .scope,
 .itn-marker:hover .scope {
@@ -489,21 +515,19 @@ body::after {
     left: 50%;
     transform: translateX(-50%) translateY(-4px);
     background: rgba(5, 10, 22, 0.95);
-    border: 1px solid var(--marker-color);
-    color: var(--marker-color);
+    /* color/border-colorはJS側のinline styleで明示的に指定 */
     font-family: var(--text-mono);
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 600;
     letter-spacing: 0.08em;
-    padding: 4px 9px;
+    padding: 4px 10px;
     white-space: nowrap;
     line-height: 1.3;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.7),
-                0 0 14px var(--marker-glow);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.22s, transform 0.22s;
-    /* 銘板上端から伸びる短い接続線 */
+    border-style: solid;
+    border-width: 1px;
 }
 .itn-marker .nameplate::before {
     content: '';
@@ -669,20 +693,21 @@ body::after {
     /* 線本体:cyanのうっすらしたベース */
     background:
         linear-gradient(to bottom,
-            rgba(0, 242, 254, 0.45) 0%,
-            rgba(0, 242, 254, 0.45) 100%);
+            rgba(0, 242, 254, 0.5) 0%,
+            rgba(0, 242, 254, 0.5) 100%);
     pointer-events: none;
     z-index: 0;
     overflow: hidden;
 }
-/* パルス:::before/::after の中に、独立した光点を浮かべる */
+/* spine 上半分:itemの上端から六角形の上端まで(余白なし) */
 .tl-hex-wrap::before {
-    top: 0;
-    height: calc(50% - 25px);
+    top: -7px;             /* card の margin-top 7px を補正、上のアイテムと繋ぐ */
+    height: calc(50% - 25px + 7px);
 }
+/* spine 下半分:六角形の下端からitemの下端まで(次のアイテムまで繋ぐ) */
 .tl-hex-wrap::after {
     top: calc(50% + 25px);
-    bottom: 0;
+    bottom: -7px;          /* card の margin-bottom 7px を補正 */
 }
 /* 最初のアイテムは上半分のspine不要 */
 .tl-item:first-child .tl-hex-wrap::before { display: none; }
@@ -718,7 +743,7 @@ body::after {
     0%   { top: calc(50% + 25px); opacity: 0; }
     15%  { opacity: 1; }
     85%  { opacity: 1; }
-    100% { top: 100%; opacity: 0; }
+    100% { top: calc(100% + 7px); opacity: 0; }   /* margin-bottom 7px ぶん下まで伸ばす */
 }
 /* 最後のアイテムにはパルス不要 */
 .tl-item:last-child .tl-pulse { display: none; }
@@ -737,7 +762,10 @@ body::after {
     position: relative;
     display: flex;
     align-items: stretch;
-    margin-bottom: 14px;
+    /* margin-bottom 廃止:電流パルスが途切れないようにアイテム間に空白を入れない。
+       カードの上下のpaddingで自然な余白は確保される */
+    margin-bottom: 0;
+    padding-bottom: 0;
     animation: fade-in-up 0.45s ease both;
 }
 .tl-item:nth-child(1) { animation-delay: 0.04s; }
@@ -786,28 +814,26 @@ body::after {
 .tl-hex .icon {
     position: relative;
     z-index: 2;
-    font-size: 20px;
+    font-size: 18px;
     line-height: 1;
+    margin-top: -10px;       /* アイコンを上半分に寄せる(下半分はネームプレート用) */
     filter: drop-shadow(0 0 6px var(--cat-glow, rgba(0, 242, 254, 0.5)));
 }
 /*
-  ネームプレート(参考画像どおり):
-  長方形を六角形の「下半分」に重ねる形にする。
-  - 六角形の中央(top:50%)から下端の少し下までを覆う
-  - 上から見ると「上半分=アイコン、下半分=ラベル」のような構成
-  - 長方形は完全な四角(クリップなし)、六角形の縁を一部覆い隠す形
+  ネームプレート v6 final:
+  - 六角形の下半分に長方形プレート
+  - アイコンは上に寄せたので干渉しない
+  - hex-wrap の絶対座標で「六角形中心の少し下」に配置
+  - 六角形の clip-path で切られないよう、hex の兄弟として hex-wrap 内に配置
 */
 .tl-hex-wrap .hex-tag {
     position: absolute;
-    /* 六角形(50px)の中心が hex-wrap の中央(padding-bottom 10pxを差し引く)
-       六角形の中心 ≒ hex-wrap top 0 から (50-10)/2 + ... 計算が複雑なので、
-       実用的には bottom を使って「六角形の下端付近」に固定する */
-    bottom: 12px;       /* 六角形の下端から少し上、下半分を覆う */
+    top: calc(50% + 3px);          /* 六角形の中心から少し下 */
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, 0);
     font-family: var(--text-mono);
-    font-size: 7.5px;
-    font-weight: 600;
+    font-size: 8px;
+    font-weight: 700;
     letter-spacing: 0.18em;
     color: var(--cat-color, var(--accent-cyan));
     background: var(--bg-deep);
@@ -817,7 +843,7 @@ body::after {
     line-height: 1;
     z-index: 5;
     white-space: nowrap;
-    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
 }
 
 /* カード — 左の角を六角形に向かって切り落とし、六角形が食い込む */
@@ -826,6 +852,8 @@ body::after {
     background: var(--card-glass);
     border: 1px solid var(--card-border);
     margin-left: -8px; /* 六角形と重なる */
+    margin-top: 7px;       /* アイテム間の空気感(margin廃止の代替) */
+    margin-bottom: 7px;
     padding: 12px 14px 12px 22px; /* 左パディングは食い込みぶん広く */
     backdrop-filter: blur(6px);
     transition: all 0.2s;
@@ -869,6 +897,39 @@ body::after {
 }
 
 /* カードヘッダー(時刻 + タイプラベル) */
+/*
+  カード上の地図番号バッジ:
+  地図マーカーと同じ色・同じ番号の小さな六角形。
+  地図とカードの対応関係を一目で示す。
+*/
+.tl-card .card-num-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    font-family: var(--text-display);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--badge-color, var(--accent-cyan));
+    background: var(--bg-deep);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    border: 0;
+    position: relative;
+    margin-right: 8px;
+    flex-shrink: 0;
+    /* 縁を表現するため、外側に色付き矩形を重ねる */
+}
+.tl-card .card-num-badge::before {
+    content: '';
+    position: absolute;
+    inset: -1.5px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    background: var(--badge-color, var(--accent-cyan));
+    z-index: -1;
+}
+.tl-card.no-map-num .card-num-badge { display: none; }
+
 .tl-card .card-head {
     display: flex;
     align-items: baseline;
@@ -1052,16 +1113,6 @@ body::after {
 .tl-card.hovered-from-map {
     background: var(--card-glass-hover);
     border-color: var(--card-border-hover);
-}
-/* 同一座標の複数イベントを「同じ場所のグループ」として柔らかく強調 */
-.tl-item.cohort .tl-card {
-    box-shadow: inset 3px 0 0 0 var(--accent-cyan);
-    border-color: rgba(0, 242, 254, 0.35);
-    animation: cohort-pulse 2.8s ease-in-out infinite;
-}
-@keyframes cohort-pulse {
-    0%, 100% { box-shadow: inset 3px 0 0 0 var(--accent-cyan); }
-    50%      { box-shadow: inset 3px 0 0 0 var(--accent-cyan), 0 0 18px rgba(0, 242, 254, 0.18); }
 }
 
 /* ──────────── EMPTY DAY ──────────── */
@@ -1594,7 +1645,8 @@ const SAMPLE_ITN = {
 // ──────────────── ステート ────────────────
 let state = {
     itn: null,
-    selectedDayIdx: 0
+    selectedDayIdx: 0,
+    numByEventIdx: new Map()  // eventIdx → {num, color} 地図のグルーピング結果
 };
 
 // ──────────────── ユーティリティ ────────────────
@@ -1895,9 +1947,6 @@ function renderEventCard(ev, evIdx) {
             // 該当マーカーをフォーカス
             const el = m.getElement();
             if (el) el.classList.add('is-active');
-            // 同一座標の関連カード群をcohort強調
-            const g = m.__groupData;
-            if (g && g.eventIdxs.length > 1) bringEventsToFront(g.eventIdxs);
         }
     });
     // マウスホバーで地図側マーカーを強調(双方向リンク)
@@ -2048,10 +2097,12 @@ function ensureLeafletMap() {
 
 function drawMap() {
     const map = ensureLeafletMap();
-    if (!map) return;   // Leaflet読み込み失敗時は無視
+    if (!map) return;
     __markerLayer.clearLayers();
     __lineLayer.clearLayers();
     __markerByEventIdx.clear();
+    // eventIdx → {num, color} の対応もここで作る(カード番号バッジ用)
+    state.numByEventIdx = new Map();
 
     const day = state.itn.days[state.selectedDayIdx];
     if (!day) return;
@@ -2148,17 +2199,15 @@ function drawMap() {
     });
 
     groupedByCoord.forEach((g) => {
-        // 通常時:六角形+番号のみ。
-        // フォーカス時:ターゲットスコープ(L字×4)が四隅に出現+名前プレートが下に。
         const html = `
-            <div class="scope scope-tl"></div>
-            <div class="scope scope-tr"></div>
-            <div class="scope scope-bl"></div>
-            <div class="scope scope-br"></div>
-            <div class="marker-inner" style="--marker-color: ${g.color}; --marker-glow: ${g.glow};">
+            <div class="scope scope-tl" style="border-color: ${g.color};"></div>
+            <div class="scope scope-tr" style="border-color: ${g.color};"></div>
+            <div class="scope scope-bl" style="border-color: ${g.color};"></div>
+            <div class="scope scope-br" style="border-color: ${g.color};"></div>
+            <div class="marker-inner" style="--marker-color: ${g.color}; --marker-glow: ${g.glow}; background: ${g.color}; box-shadow: 0 0 14px ${g.glow};">
                 <span class="marker-num" style="color: ${g.color}; text-shadow: 0 0 5px ${g.glow};">${g.num}</span>
             </div>
-            <div class="nameplate">${escapeHtml(g.label)}</div>
+            <div class="nameplate" style="color: ${g.color}; border-color: ${g.color}; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 14px ${g.glow};">${escapeHtml(g.label)}</div>
         `;
         const icon = L.divIcon({
             className: 'itn-marker',
@@ -2187,8 +2236,6 @@ function drawMap() {
             // 代表(最初の)イベントカードへスクロール
             if (g.eventIdxs.length > 0) {
                 highlightTimelineCard(g.eventIdxs[0]);
-                // 同一座標に複数イベントがある場合、それらを上に並べて目立たせる
-                bringEventsToFront(g.eventIdxs);
             }
         });
         // ホバー:全関連カードを強調
@@ -2210,8 +2257,15 @@ function drawMap() {
         g.eventIdxs.forEach(idx => {
             if (!__markerByEventIdx.has(idx)) __markerByEventIdx.set(idx, []);
             __markerByEventIdx.get(idx).push(marker);
+            // カード番号バッジ用の対応も保存
+            state.numByEventIdx.set(idx, { num: g.num, color: g.color });
         });
     });
+
+    // 地図描画後、カード番号バッジを反映するため renderDay を再呼び出す。
+    // ただしrenderAll内のフロー(renderDay→drawMap)を壊さないよう、
+    // ここでは「カード番号バッジだけ更新」する軽い関数を呼ぶ。
+    updateCardNumBadges();
 
     // ────── 表示範囲(fit) ──────
     // 太平洋またぎ廃止:DAY 01/15のような出入国日では、
@@ -2274,6 +2328,26 @@ function shortenLabel(s) {
     return s.slice(0, 16) + '…';
 }
 
+// マップ描画後に呼ぶ:各カードの先頭に「地図と同じ番号」のバッジを差し込む
+function updateCardNumBadges() {
+    document.querySelectorAll('.tl-item').forEach(item => {
+        const idx = Number(item.dataset.eventIdx);
+        const info = state.numByEventIdx.get(idx);
+        const head = item.querySelector('.card-head');
+        if (!head) return;
+        // 既存のバッジを削除
+        const existing = head.querySelector('.card-num-badge');
+        if (existing) existing.remove();
+        if (!info) return;
+        // 先頭に新規バッジを挿入
+        const b = document.createElement('span');
+        b.className = 'card-num-badge';
+        b.style.setProperty('--badge-color', info.color);
+        b.textContent = info.num;
+        head.insertBefore(b, head.firstChild);
+    });
+}
+
 // マーカー強調(タイムラインからの呼び出しでも使える)
 function highlightMarker(eventIdx, on) {
     const arr = __markerByEventIdx.get(eventIdx);
@@ -2283,23 +2357,6 @@ function highlightMarker(eventIdx, on) {
         if (!el) return;
         el.classList.toggle('is-active', on);
     });
-}
-
-// 同一座標の複数イベントを目立たせる
-// マーカークリック時、関連する全カードに ".cohort" クラスを当てて軽く強調。
-// これにより、Tsawwassen Terminal のような「複数回訪れる場所」をタップした時に、
-// その場所に紐づくすべてのカードが同時に光る。
-function bringEventsToFront(eventIdxs) {
-    document.querySelectorAll('.tl-item.cohort').forEach(n => n.classList.remove('cohort'));
-    eventIdxs.forEach(idx => {
-        const item = document.querySelector(`.tl-item[data-event-idx="${idx}"]`);
-        if (item) item.classList.add('cohort');
-    });
-    // 5秒後にcohort強調を消す(主役の最初のカードはflashで2秒強調されるので、それより長め)
-    clearTimeout(bringEventsToFront._tid);
-    bringEventsToFront._tid = setTimeout(() => {
-        document.querySelectorAll('.tl-item.cohort').forEach(n => n.classList.remove('cohort'));
-    }, 5000);
 }
 
 // タイムラインカードを強調表示(マーカーからの呼び出し)
@@ -2439,7 +2496,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         if (__leafletMap) {
             __leafletMap.invalidateSize();
-            drawMap();  // fit再計算
+            drawMap();  // 初回のみfit
         }
     }, 100);
 
@@ -2447,8 +2504,10 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         clearTimeout(resizeTid);
         resizeTid = setTimeout(() => {
+            // ★重要: resize では invalidateSize のみ呼ぶ。
+            // drawMap() を呼ぶとfitBoundsで現在のズーム/中心が破壊される。
+            // スマホでアドレスバーが出入りした際に地図がリセットされる問題への対処。
             if (__leafletMap) __leafletMap.invalidateSize();
-            drawMap();
         }, 200);
     });
 });
