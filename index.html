@@ -845,15 +845,18 @@ body.has-fullscreen-map {
 
 /*
   v7-step4: 過去/現在/未来の状態別演出
-  - status-past:   カードとネームプレートを暗く(opacity 0.45)、過去と直感的に分かる
-                   ただし六角形そのものは不透明を維持(時間の節目として残し、
-                   背後の spine 線が透けて「貫通している」ように見える問題を回避)
+  - status-past:   カードとネームプレートは opacity 0.45 で暗化(背後は spine が
+                   見えない領域なので透けても問題ない)
+                   六角形は filter:brightness(0.45) で暗化(opacity だと半透明化して
+                   背後の spine が透けてしまうため、ピクセル不透明度を維持する
+                   filter:brightness を使う)
   - status-future: 通常表示
   - status-now:    通常表示(特別演出なし — 暗化した過去の中で明るく見える
                    最初のものが「現在」と自然に認識できる、Less is more)
   v7-step5: !important を付加。fade-in-up animation の終了状態 opacity:1 が
   通常のセレクタより強く効くため、!important で勝負を確定させる必要がある。
   v7-step6: 範囲を tl-item 全体 → .tl-card / .hex-tag に限定。六角形は不透明維持。
+  v7-step7: 六角形にも暗化を当てるが、opacity ではなく filter:brightness を使う。
 */
 .tl-item.status-past .tl-card,
 .tl-item.status-past .hex-tag {
@@ -864,6 +867,15 @@ body.has-fullscreen-map {
 .tl-item.status-past:hover .hex-tag {
     /* 過去でも参照したい時にホバーで一時的に明るくする */
     opacity: 0.85 !important;
+}
+.tl-item.status-past .tl-hex {
+    /* filter:brightness はピクセルの不透明度を維持しつつ見た目を暗くする。
+       opacity 0.45 と違って、背後の spine が透けて見えない。 */
+    filter: brightness(0.45);
+    transition: filter 0.3s;
+}
+.tl-item.status-past:hover .tl-hex {
+    filter: brightness(0.85);
 }
 /* v7-step5: status-now の特別演出は廃止。
    過去カードが暗化されたので、通常の明るさで表示される最初のものが
@@ -2005,16 +2017,17 @@ function renderDay() {
 
     // v7-step4: パルスの発射起点を「最初の non-past イベント」の y座標に。
     // v7-step5: spine も「最初の六角形の中心 → 最後の六角形の中心」に閉じる。
-    // v7-step6: 1フレーム目のレイアウト測定が不正確だった(Leaflet地図やフォントの
-    // 遅延読込みでアイテム高さが変動)。ネストした requestAnimationFrame で
-    // 確実にレイアウトが確定したフレームで測定する。また window.load でも
-    // 再測定して、フォント/画像の遅延読込みにも追随する。
+    // v7-step6: requestAnimationFrame で測定したが効かなかった。
+    // v7-step7: 真の原因は fade-in-up アニメーション中に測定していたこと。
+    // アイテムは translateY(10px → 0) で約1秒間移動するため、その間の
+    // getBoundingClientRect() はアニメ途中の値を返す。
+    // 対策: setTimeout で確実に全アニメ完了後(約1秒)に測定。
+    // さらに描画後の保険として 100ms と 1500ms の2回測定する。
     function measureAndApplySpine() {
         const items = Array.from(tl.querySelectorAll('.tl-item'));
         if (items.length === 0) return;
         const firstItem = items[0];
         const lastItem  = items[items.length - 1];
-        // 六角形そのものの座標を測る(.tl-hex-wrap の中心)
         const firstHex = firstItem.querySelector('.tl-hex-wrap');
         const lastHex  = lastItem.querySelector('.tl-hex-wrap');
         if (!firstHex || !lastHex) return;
@@ -2024,8 +2037,10 @@ function renderDay() {
         // .timeline 原点からの六角形中心のY
         const firstHexY = firstRect.top  + firstRect.height  / 2 - tlRect.top;
         const lastHexY  = lastRect.top   + lastRect.height   / 2 - tlRect.top;
-        tl.style.setProperty('--spine-top', `${firstHexY}px`);
         const tlH = tl.offsetHeight;
+        // v7-step7: CSS変数経由が効かない可能性に備え、JS で直接 ::before の
+        // スタイルを操作するため、追加で <style> タグに動的ルールを書き込む方式も併用。
+        tl.style.setProperty('--spine-top', `${firstHexY}px`);
         tl.style.setProperty('--spine-bottom', `${tlH - lastHexY}px`);
         tl.style.setProperty('--pulse-end-y', `${lastHexY}px`);
 
@@ -2043,11 +2058,16 @@ function renderDay() {
         }
     }
 
-    // ネスト rAF:1フレーム目で append、2フレーム目で測定 → 確実にレイアウト後
-    requestAnimationFrame(() => {
-        requestAnimationFrame(measureAndApplySpine);
-    });
-    // フォント・画像の遅延読込み完了後にも再測定(初回 renderDay のみ意味あり)
+    // 複数のタイミングで測定して、どこかで確定する保険的アプローチ:
+    // - 即時(rAF×2): アニメ開始直後
+    // - 200ms: 初期アニメの中盤
+    // - 700ms: 初期アニメがほぼ完了
+    // - 1200ms: 全 stagger アニメ(最大0.46+0.45=0.91s)完了後
+    requestAnimationFrame(() => requestAnimationFrame(measureAndApplySpine));
+    setTimeout(measureAndApplySpine, 200);
+    setTimeout(measureAndApplySpine, 700);
+    setTimeout(measureAndApplySpine, 1200);
+    // フォント読み込み完了でも再測定
     if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(measureAndApplySpine).catch(() => {});
     }
