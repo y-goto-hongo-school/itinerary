@@ -291,13 +291,13 @@ body::after {
 
   v7-step2: 実機で「暗すぎる、Google Maps Dark レベルが欲しい」とフィードバック。
   Dark Matter は元々控えめなコントラストなので、brightness と contrast を底上げ。
-  - brightness(2.3): 道路・地名の白要素を強く浮かび上がらせる (v7-step3 で 1.5→2.0、v7-step5 で 2.0→2.3 に増強)
+  - brightness(2.5): 道路・地名の白要素を強く浮かび上がらせる (v7-step3: 1.5→2.0、 v7-step5: 2.0→2.3、 v7-step6: 2.3→2.5)
   - contrast(1.25): 背景の黒との分離を強化、メリハリを出す
   - hue-rotate(-8deg): わずかにcyan寄りに、世界観の cyan 計器盤と統一
   - saturate(0.92): 強い原色(公園の濃緑など)を抑える
 */
 .leaflet-tile-pane {
-    filter: brightness(2.3) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
+    filter: brightness(2.5) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
 }
 /* マーカーや線は filter の影響を受けないよう除外 */
 .leaflet-marker-pane,
@@ -845,19 +845,23 @@ body.has-fullscreen-map {
 
 /*
   v7-step4: 過去/現在/未来の状態別演出
-  - status-past:   カード全体を暗く(opacity 0.45)、過去と直感的に分かる
+  - status-past:   カードとネームプレートを暗く(opacity 0.45)、過去と直感的に分かる
+                   ただし六角形そのものは不透明を維持(時間の節目として残し、
+                   背後の spine 線が透けて「貫通している」ように見える問題を回避)
   - status-future: 通常表示
   - status-now:    通常表示(特別演出なし — 暗化した過去の中で明るく見える
                    最初のものが「現在」と自然に認識できる、Less is more)
-  すべての要素(六角形・カード・電流)が opacity の影響を受けるため、
-  自然に「過去はトーンダウン」した雰囲気になる。
   v7-step5: !important を付加。fade-in-up animation の終了状態 opacity:1 が
-  通常のセレクタより強く効くため、!important で勝負を確定させる必要がある。 */
-.tl-item.status-past {
+  通常のセレクタより強く効くため、!important で勝負を確定させる必要がある。
+  v7-step6: 範囲を tl-item 全体 → .tl-card / .hex-tag に限定。六角形は不透明維持。
+*/
+.tl-item.status-past .tl-card,
+.tl-item.status-past .hex-tag {
     opacity: 0.45 !important;
     transition: opacity 0.3s;
 }
-.tl-item.status-past:hover {
+.tl-item.status-past:hover .tl-card,
+.tl-item.status-past:hover .hex-tag {
     /* 過去でも参照したい時にホバーで一時的に明るくする */
     opacity: 0.85 !important;
 }
@@ -2001,35 +2005,52 @@ function renderDay() {
 
     // v7-step4: パルスの発射起点を「最初の non-past イベント」の y座標に。
     // v7-step5: spine も「最初の六角形の中心 → 最後の六角形の中心」に閉じる。
-    // 過去のセグメントはパルスが流れない演出。
-    // DOM レイアウト確定後に offsetTop を測る必要があるため、requestAnimationFrame で次フレームに。
-    requestAnimationFrame(() => {
-        // 全イベントの六角形中心の y座標を測定
+    // v7-step6: 1フレーム目のレイアウト測定が不正確だった(Leaflet地図やフォントの
+    // 遅延読込みでアイテム高さが変動)。ネストした requestAnimationFrame で
+    // 確実にレイアウトが確定したフレームで測定する。また window.load でも
+    // 再測定して、フォント/画像の遅延読込みにも追随する。
+    function measureAndApplySpine() {
         const items = Array.from(tl.querySelectorAll('.tl-item'));
-        if (items.length > 0) {
-            const firstItem = items[0];
-            const lastItem  = items[items.length - 1];
-            const firstHexY = firstItem.offsetTop + firstItem.offsetHeight / 2;
-            const lastHexY  = lastItem.offsetTop  + lastItem.offsetHeight  / 2;
-            // spine の top と bottom を六角形の中心に。
-            tl.style.setProperty('--spine-top', `${firstHexY}px`);
-            // bottom は .timeline 下端からの距離なので、 timeline 高さ - lastHexY
-            const tlH = tl.offsetHeight;
-            tl.style.setProperty('--spine-bottom', `${tlH - lastHexY}px`);
-            // パルスの終端も最後の六角形の中心に。
-            tl.style.setProperty('--pulse-end-y', `${lastHexY}px`);
-        }
+        if (items.length === 0) return;
+        const firstItem = items[0];
+        const lastItem  = items[items.length - 1];
+        // 六角形そのものの座標を測る(.tl-hex-wrap の中心)
+        const firstHex = firstItem.querySelector('.tl-hex-wrap');
+        const lastHex  = lastItem.querySelector('.tl-hex-wrap');
+        if (!firstHex || !lastHex) return;
+        const tlRect = tl.getBoundingClientRect();
+        const firstRect = firstHex.getBoundingClientRect();
+        const lastRect  = lastHex.getBoundingClientRect();
+        // .timeline 原点からの六角形中心のY
+        const firstHexY = firstRect.top  + firstRect.height  / 2 - tlRect.top;
+        const lastHexY  = lastRect.top   + lastRect.height   / 2 - tlRect.top;
+        tl.style.setProperty('--spine-top', `${firstHexY}px`);
+        const tlH = tl.offsetHeight;
+        tl.style.setProperty('--spine-bottom', `${tlH - lastHexY}px`);
+        tl.style.setProperty('--pulse-end-y', `${lastHexY}px`);
 
         // パルスの発射起点
         const firstActive = tl.querySelector('.tl-item:not(.status-past)');
         if (firstActive) {
-            const y = firstActive.offsetTop + firstActive.offsetHeight / 2;
-            tl.style.setProperty('--pulse-start-y', `${y - 18}px`);
+            const fa = firstActive.querySelector('.tl-hex-wrap');
+            if (fa) {
+                const faRect = fa.getBoundingClientRect();
+                const y = faRect.top + faRect.height / 2 - tlRect.top;
+                tl.style.setProperty('--pulse-start-y', `${y - 18}px`);
+            }
         } else {
-            // 全部過去:パルスは出さない(タイムライン外から始めて永遠に出てこない)
             tl.style.setProperty('--pulse-start-y', `9999px`);
         }
+    }
+
+    // ネスト rAF:1フレーム目で append、2フレーム目で測定 → 確実にレイアウト後
+    requestAnimationFrame(() => {
+        requestAnimationFrame(measureAndApplySpine);
     });
+    // フォント・画像の遅延読込み完了後にも再測定(初回 renderDay のみ意味あり)
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(measureAndApplySpine).catch(() => {});
+    }
 }
 
 function renderEventCard(ev, evIdx, dayDate) {
