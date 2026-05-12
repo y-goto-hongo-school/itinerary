@@ -279,11 +279,15 @@ body::after {
 }
 
 /*
-  Voyagerは明るいタイル → invertでダーク化、hue-rotateでcyan寄りに。
-  v6: 文字を明るく見せるため invert を強め(1.0)、brightnessを少し上げる
+  v7: Dark Matter タイル使用のため、invertフィルターは不要になった。
+  タイル自体が既に「黒背景 + 明るい線・地名」のダークデザインなので、
+  そのまま表示するだけで高コントラストになる。
+  v6 では filter: invert(1) hue-rotate(180deg)... を当てていたが廃止。
 */
 .leaflet-tile-pane {
-    filter: invert(1) hue-rotate(180deg) saturate(0.78) brightness(1.05) contrast(0.92);
+    /* タイル自体に小さなcyan寄りの色相シフトだけ加えて世界観を統一。
+       saturate を少し下げて派手すぎる原色を抑える。 */
+    filter: hue-rotate(-8deg) saturate(0.92);
 }
 /* マーカーや線は filter の影響を受けないよう除外 */
 .leaflet-marker-pane,
@@ -2070,12 +2074,14 @@ function ensureLeafletMap() {
     }).setView([35, 0], 2);
 
     /*
-      タイル: CARTO Voyager (標準寄り、ランドマーク・道路豊富)
-      これに「invertフィルター + 軽い色相シフト」をかけて
-      ダークかつ計器盤調に変換する。
-      明るい標準タイルを暗くする方が、ダークタイルにラベルを乗せるより視認性が高い。
+      タイル: CARTO Dark Matter (v7変更)
+      v6 までは Voyager(明るいタイル) + invertフィルターでダーク化していたが、
+      道路や地名のコントラストが眠く、ユーザーから「もっとはっきり見えるように」
+      という要望を受けたため、CARTO がプロデザインした専用ダークタイルに乗り換え。
+      フィルター加工が不要になるので CSS も簡潔になる。
+      retina対応(@2x):URL末尾の {r} が高DPI画面で '@2x' に展開される。
     */
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '© OpenStreetMap contributors © CARTO',
         subdomains: 'abcd',
         maxZoom: 19
