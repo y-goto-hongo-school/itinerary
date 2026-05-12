@@ -757,22 +757,24 @@ body.has-fullscreen-map {
     isolation: isolate;
 }
 /* 連続spine本体 — .timeline の高さ全体を貫く1本の線
-   v7-step5: 上端と下端を最初/最後の六角形の中心に揃える。
-   JS が --spine-top / --spine-bottom を .timeline に設定する。
-   未設定の場合は 0(タイムライン全体貫通)。 */
-.timeline::before {
-    content: '';
+   v7.7: 設計変更。v7-step5/6/7 で .timeline::before + CSS変数(--spine-top/bottom)
+   アプローチを試したが、実機で 上下端が六角形に合わず spine が貫通していた。
+   原因が CSS変数の経路にあるのか疑似要素にあるのか確定できなかったため、
+   間接参照を完全に排除する方針に切り替え:
+   - 疑似要素を廃止 → 実DOM要素 <div class="tl-spine"> を JS で動的生成
+   - CSS変数経由を廃止 → top/bottom を inline style で直接指定
+   これで .timeline の幾何と spine の位置が DevTools で直接確認可能になる。 */
+.tl-spine {
     position: absolute;
     /* tl-hex-wrap (width 56px) の中心 = padding-left 4px から 28px の地点。
        モバイルでは tl-hex-wrap が 50px → 中心 25px(下のメディアクエリで上書き)*/
     left: 32px;  /* 4 + 28 */
     transform: translateX(-50%);
-    top: var(--spine-top, 0);
-    bottom: var(--spine-bottom, 0);
     width: 2px;
     background: rgba(0, 242, 254, 0.5);
     pointer-events: none;
     z-index: 0;
+    /* top/bottom は JS が inline style で設定する */
 }
 /*
   電流パルス:.timeline の上を流れる光の点。
@@ -845,11 +847,11 @@ body.has-fullscreen-map {
 
 /*
   v7-step4: 過去/現在/未来の状態別演出
-  - status-past:   カードとネームプレートは opacity 0.45 で暗化(背後は spine が
-                   見えない領域なので透けても問題ない)
-                   六角形は filter:brightness(0.45) で暗化(opacity だと半透明化して
-                   背後の spine が透けてしまうため、ピクセル不透明度を維持する
-                   filter:brightness を使う)
+  - status-past:   カードは opacity 0.45 で暗化(カード背後には spine が
+                   通っておらず、半透明化しても透ける問題はない)
+                   六角形と hex-tag(ネームプレート)は filter:brightness(0.45) で
+                   暗化(opacity だと半透明化して、六角形の輪郭が hex-tag を
+                   透けて見えてしまう → 課題2)
   - status-future: 通常表示
   - status-now:    通常表示(特別演出なし — 暗化した過去の中で明るく見える
                    最初のものが「現在」と自然に認識できる、Less is more)
@@ -857,24 +859,28 @@ body.has-fullscreen-map {
   通常のセレクタより強く効くため、!important で勝負を確定させる必要がある。
   v7-step6: 範囲を tl-item 全体 → .tl-card / .hex-tag に限定。六角形は不透明維持。
   v7-step7: 六角形にも暗化を当てるが、opacity ではなく filter:brightness を使う。
+  v7.7:    hex-tag も六角形と同じ filter:brightness 方式に統一。
+           opacity で半透明化していたため、プレート背後にある六角形の辺が
+           透けて見える問題が発生していた(課題2)。filter:brightness なら
+           ピクセル不透明度は維持されるので透けない。
 */
-.tl-item.status-past .tl-card,
-.tl-item.status-past .hex-tag {
+.tl-item.status-past .tl-card {
     opacity: 0.45 !important;
     transition: opacity 0.3s;
 }
-.tl-item.status-past:hover .tl-card,
-.tl-item.status-past:hover .hex-tag {
+.tl-item.status-past:hover .tl-card {
     /* 過去でも参照したい時にホバーで一時的に明るくする */
     opacity: 0.85 !important;
 }
-.tl-item.status-past .tl-hex {
+.tl-item.status-past .tl-hex,
+.tl-item.status-past .hex-tag {
     /* filter:brightness はピクセルの不透明度を維持しつつ見た目を暗くする。
-       opacity 0.45 と違って、背後の spine が透けて見えない。 */
+       opacity 0.45 と違って、背後の spine や六角形の辺が透けて見えない。 */
     filter: brightness(0.45);
     transition: filter 0.3s;
 }
-.tl-item.status-past:hover .tl-hex {
+.tl-item.status-past:hover .tl-hex,
+.tl-item.status-past:hover .hex-tag {
     filter: brightness(0.85);
 }
 /* v7-step5: status-now の特別演出は廃止。
@@ -1442,10 +1448,10 @@ body.has-fullscreen-map {
     .tl-card .card-name { font-size: 14px; }
     .map-controls button { width: 28px; height: 28px; font-size: 13px; }
 
-    /* v7-step3: 連続spineに伴い、モバイルでも .timeline::before / .tl-pulse の
+    /* v7-step3: 連続spineに伴い、モバイルでも spine / .tl-pulse の
        x座標を再計算。tl-hex-wrap が 50px → 中心 25px、 padding-left 4px →
-       合計 29px。 */
-    .timeline::before { left: 29px; }
+       合計 29px。 v7.7: .timeline::before → .tl-spine に変更。 */
+    .tl-spine { left: 29px; }
     .tl-pulse { left: 29px; }
 
     /*
@@ -2015,6 +2021,15 @@ function renderDay() {
         tl.appendChild(pulse);
     }
 
+    // v7.7: spine 実DOM要素を作成して .timeline に追加する。
+    // 旧設計(.timeline::before + CSS変数)は、CSS変数の経路に問題があり
+    // 実機で値が反映されなかった。原因の決め手が掴めなかったため、
+    // 疑似要素もCSS変数も使わない、最もシンプルな方式に切り替える。
+    // top/bottom は下の measureAndApplySpine() で inline style に直接設定。
+    const spine = document.createElement('div');
+    spine.className = 'tl-spine';
+    tl.appendChild(spine);
+
     // v7-step4: パルスの発射起点を「最初の non-past イベント」の y座標に。
     // v7-step5: spine も「最初の六角形の中心 → 最後の六角形の中心」に閉じる。
     // v7-step6: requestAnimationFrame で測定したが効かなかった。
@@ -2023,6 +2038,7 @@ function renderDay() {
     // getBoundingClientRect() はアニメ途中の値を返す。
     // 対策: setTimeout で確実に全アニメ完了後(約1秒)に測定。
     // さらに描画後の保険として 100ms と 1500ms の2回測定する。
+    // v7.7: 測定後の適用先を CSS変数 → spine要素の inline style に変更。
     function measureAndApplySpine() {
         const items = Array.from(tl.querySelectorAll('.tl-item'));
         if (items.length === 0) return;
@@ -2038,10 +2054,14 @@ function renderDay() {
         const firstHexY = firstRect.top  + firstRect.height  / 2 - tlRect.top;
         const lastHexY  = lastRect.top   + lastRect.height   / 2 - tlRect.top;
         const tlH = tl.offsetHeight;
-        // v7-step7: CSS変数経由が効かない可能性に備え、JS で直接 ::before の
-        // スタイルを操作するため、追加で <style> タグに動的ルールを書き込む方式も併用。
-        tl.style.setProperty('--spine-top', `${firstHexY}px`);
-        tl.style.setProperty('--spine-bottom', `${tlH - lastHexY}px`);
+
+        // v7.7: spine要素に top/bottom を直接 inline style で設定。
+        // CSS変数経由ではなく、要素自身のスタイル属性に書くため確実。
+        spine.style.top    = `${firstHexY}px`;
+        spine.style.bottom = `${tlH - lastHexY}px`;
+
+        // パルスは引き続き CSS変数経由(.timeline 側に設定 → @keyframes 内で var() 参照)。
+        // パルスの var() は @keyframes の中で使うため inline style では代替不可。
         tl.style.setProperty('--pulse-end-y', `${lastHexY}px`);
 
         // パルスの発射起点
