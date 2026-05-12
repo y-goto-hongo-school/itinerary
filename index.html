@@ -789,21 +789,28 @@ body.has-fullscreen-map {
 }
 @keyframes pulse-flow {
     /*
-      6秒で .timeline の上から下まで走る。
-      上端と下端でフェードイン/アウトして、ループの境目を見えにくくする。
+      .timeline の上から下まで走る。
+      v7-step4: --pulse-start-y を CSS変数で外部から指定可能に。
+      過去のセグメントには発射されないよう、JS が「最初の non-past アイテム
+      の y座標」を .timeline に CSS variable として設定する。
+      未設定の場合は 0(上から走る)。
     */
-    0%   { top: -18px; opacity: 0; }
+    0%   { top: var(--pulse-start-y, -18px); opacity: 0; }
     5%   { opacity: 1; }
     95%  { opacity: 1; }
     100% { top: calc(100% + 0px); opacity: 0; }
 }
-/* 3本のパルスを等間隔(2秒おき)で発射 */
-.tl-pulse:nth-of-type(1) { animation-delay: 0s; }
-.tl-pulse:nth-of-type(2) { animation-delay: 2s; }
-.tl-pulse:nth-of-type(3) { animation-delay: 4s; }
+/* 3本のパルスの animation-delay は JS 側で inline style で設定する
+   (v7-step4: CSS の :nth-of-type は他の div と競合して効かないため) */
 
 .tl-item {
     position: relative;
+    /* v7-step4: パルスが六角形の手前を通ってしまう問題の修正。
+       tl-item に z-index を明示することで stacking context が作られ、
+       内部の tl-hex-wrap(z:2)などが tl-item レイヤー(z:1)に閉じ込められる。
+       一方 .tl-pulse は .timeline 直下の z:0 のままなので、
+       tl-item 全体の背後を通るようになり、六角形の背面パススルー演出に。 */
+    z-index: 1;
     display: flex;
     align-items: stretch;
     margin-bottom: 0;
@@ -821,6 +828,36 @@ body.has-fullscreen-map {
 @keyframes fade-in-up {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/*
+  v7-step4: 過去/現在/未来の状態別演出
+  - status-past:   カード全体を暗く(opacity 0.45)、過去と直感的に分かる
+  - status-now:    通常表示 + わずかな強調(cyan の左縁ライン)
+  - status-future: 通常表示
+  すべての要素(六角形・カード・電流)が opacity の影響を受けるため、
+  自然に「過去はトーンダウン」した雰囲気になる。
+*/
+.tl-item.status-past {
+    opacity: 0.45;
+    transition: opacity 0.3s;
+}
+.tl-item.status-past:hover {
+    /* 過去でも参照したい時にホバーで一時的に明るくする */
+    opacity: 0.85;
+}
+.tl-item.status-now .tl-card {
+    /* 現在進行中のイベント:cyan のうっすらした強調縁
+       border-left ではなく box-shadow inset で内側に光らせる(カードの
+       clip-path で切られない側に) */
+    box-shadow: inset 4px 0 0 var(--accent-cyan),
+                0 0 24px rgba(0, 242, 254, 0.18);
+    border-color: rgba(0, 242, 254, 0.4);
+}
+.tl-item.status-now .tl-hex {
+    /* 進行中の六角形は少し強く光らせる */
+    box-shadow: 0 0 28px var(--cat-glow, rgba(0, 242, 254, 0.6)),
+                0 0 12px var(--cat-color, rgba(0, 242, 254, 0.8));
 }
 
 /* 六角形(色担当の主役) */
@@ -873,7 +910,10 @@ body.has-fullscreen-map {
 */
 .tl-hex-wrap .hex-tag {
     position: absolute;
-    top: calc(50% + 9px);          /* 六角形の中心から下半分の中央付近 */
+    /* v7-step4: ユーザー要望でさらにプレート縦半分(6px)下に下げる。
+       v7-step2 で +9px → v7-step4 で +15px。
+       これで六角形の下端あたりをプレート上端が貫通する位置に。 */
+    top: calc(50% + 15px);
     left: 50%;
     transform: translate(-50%, 0);
     font-family: var(--text-mono);
@@ -1522,6 +1562,11 @@ body.has-fullscreen-map {
 
 // 仮の今日(デモ用):本来は現実の today。サンプルデータの DAY 09 = 2026-07-28 を当日扱い
 const __DEMO_TODAY = '2026-07-28';
+// 仮の今(デモ用):__DEMO_TODAY の日付内の時刻を決め打ちにする。
+// "HH:MM" 形式。null の場合は実機の現在時刻を使う(本番ではこれを null に)。
+// DAY 09 の予定: 07:00出発 → 09:00フェリー → 11:30〜13:30ガーデン → 14:30〜17:00港 → 18:00帰路…
+// 13:00 にすると、ガーデン(11:30〜13:30)が「進行中」、それ以前が「過去」、以降が「未来」となる。
+const __DEMO_NOW = '13:00';
 
 // ──────────────── カテゴリ定義 ────────────────
 const CATEGORY_DEF = {
@@ -1742,6 +1787,51 @@ function todayIso() {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
 }
+
+/*
+  v7-step4: イベントの状態判定 (PAST / NOW / FUTURE)
+  - 「過ぎた」= イベントの終了時刻が現在時刻を過ぎた
+  - 「進行中」= 開始時刻 ≤ 現在 < 終了時刻
+  - 「未来」= 開始時刻が現在より後
+  - 終了時刻がないイベント(free, lodging のチェックインのみ等)は、
+    開始時刻を過ぎていれば「進行中」、まだなら「未来」扱い
+  - その日が今日でない(過去の日 or 未来の日)場合は、別ロジック:
+    - 過去の日: 全イベントを PAST
+    - 未来の日: 全イベントを FUTURE
+*/
+function nowHHMM() {
+    // 仮の今が定義されていればそれを返す。本番では実時刻ベース。
+    if (__DEMO_NOW) return __DEMO_NOW;
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+}
+// 'HH:MM' → 分数で比較しやすくする
+function hhmmToMinutes(s) {
+    if (!s || typeof s !== 'string') return null;
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+}
+// イベントの状態を判定:'past' | 'now' | 'future'
+// dayDate は 'YYYY-MM-DD'(そのイベントが属する日付)、今日と比較する
+function eventStatus(ev, dayDate) {
+    const t = todayIso();
+    if (dayDate < t) return 'past';
+    if (dayDate > t) return 'future';
+    // 今日のイベント:時刻で判定
+    const nowMin = hhmmToMinutes(nowHHMM());
+    if (nowMin == null) return 'future';
+    const startMin = hhmmToMinutes(eventStartTime(ev));
+    const endMin = hhmmToMinutes(eventEndTime(ev));
+    if (startMin == null) return 'future';   // 時刻不明は未来扱い(無難)
+    if (endMin == null) {
+        // 終了時刻なし:開始時刻が現在より後 → future、以前 → now(まだ続行中扱い)
+        return nowMin < startMin ? 'future' : 'now';
+    }
+    if (nowMin < startMin) return 'future';
+    if (nowMin >= endMin) return 'past';
+    return 'now';
+}
 function showToast(msg, isError = false) {
     const el = $('#toast');
     el.textContent = msg;
@@ -1889,29 +1979,52 @@ function renderDay() {
         return;
     }
     d.events.forEach((ev, evIdx) => {
-        tl.appendChild(renderEventCard(ev, evIdx));
+        tl.appendChild(renderEventCard(ev, evIdx, d.date));
     });
 
     // v7-step3: タイムライン全体を流れる連続パルスを3本挿入。
-    // 各パルスは CSS の nth-of-type で異なる animation-delay を持ち、
-    // 等間隔(2秒おき)で上から下へ流れる。
+    // v7-step4: CSS の :nth-of-type は他の div(tl-item)とインデックスが
+    // 競合するため効かなかった。inline style で animation-delay を
+    // 確実に設定する方式に変更。2秒おきに発射(周期6秒)。
     for (let i = 0; i < 3; i++) {
         const pulse = document.createElement('div');
         pulse.className = 'tl-pulse';
+        pulse.style.animationDelay = `${i * 2}s`;
         tl.appendChild(pulse);
     }
+
+    // v7-step4: パルスの発射起点を「最初の non-past イベント」の y座標に。
+    // 過去のセグメントはパルスが流れない演出。
+    // DOM レイアウト確定後に offsetTop を測る必要があるため、requestAnimationFrame で次フレームに。
+    requestAnimationFrame(() => {
+        const firstActive = tl.querySelector('.tl-item:not(.status-past)');
+        if (firstActive) {
+            // .tl-item の中心(六角形のy)をパルスが流れ始める位置とする。
+            // pulse の高さ 18px ぶん上から始める(キーフレームに合わせる)。
+            const y = firstActive.offsetTop + firstActive.offsetHeight / 2;
+            tl.style.setProperty('--pulse-start-y', `${y - 18}px`);
+        } else {
+            // 全部過去:パルスは出さない(タイムライン外から始めて永遠に出てこない)
+            tl.style.setProperty('--pulse-start-y', `9999px`);
+        }
+    });
 }
 
-function renderEventCard(ev, evIdx) {
+function renderEventCard(ev, evIdx, dayDate) {
     const cat = eventCategory(ev);
     const def = CATEGORY_DEF[cat] || CATEGORY_DEF.other;
     const cls = categoryClass(cat);
     const startT = eventStartTime(ev);
     const endT = eventEndTime(ev);
 
+    // v7-step4: イベントの状態(past/now/future)を判定して
+    // tl-item にクラスを付与する。CSS 側で見た目を切り替える。
+    const status = eventStatus(ev, dayDate);
+
     const item = document.createElement('div');
-    item.className = `tl-item cat-${cls}`;
+    item.className = `tl-item cat-${cls} status-${status}`;
     item.dataset.eventIdx = evIdx;
+    item.dataset.status = status;
 
     // v7-step3: tl-pulse は .timeline 直下に3つだけ配置する設計に変更したため、
     // tl-item ごとの pulse 生成は廃止。renderDay() で .timeline 全体に
