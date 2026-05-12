@@ -125,17 +125,21 @@ body::after {
     position: relative;
     text-align: center;
     margin-bottom: 24px;
-    padding: 0 40px; /* 右上の補助情報スペース */
+    /* v7.7 改: 旧 padding: 0 40px は右上の [ OPS ] スペース予約だったが、
+       OPS ボタンは .ops-bar に独立移動したため不要に。 */
 }
 .modal-header h2 {
     font-family: var(--text-display);
-    font-size: clamp(14px, 3vw, 18px);
+    /* v7.7 改: 本体 .modal-header h2 と完全に揃える(font-size 0.95rem)。
+       旧 clamp(14px, 3vw, 18px) はほぼ同等だったが固定サイズの方が本体と一致。 */
+    font-size: 0.95rem;
     color: var(--accent-cyan);
     letter-spacing: 0.4em;
     font-weight: 500;
     text-shadow: 0 0 16px rgba(0, 242, 254, 0.4);
     margin-bottom: 8px;
     line-height: 1.3;
+    white-space: nowrap;
 }
 .modal-header .subtitle {
     font-family: var(--text-body);
@@ -1254,53 +1258,270 @@ body.has-fullscreen-map {
     background: var(--card-glass);
 }
 
-/* ──────────── ACTION BAR (最下部、控えめに) ──────────── */
-.action-bar {
-    margin-top: 30px;
-    padding-top: 20px;
-    border-top: 1px solid rgba(0, 242, 254, 0.12);
+/* ──────────── OPS PANEL (v7.7 改) ────────────
+   v7.7 初版は独自装飾(SECTOR ヘッダ、装飾枠等)で本体トップ画面の
+   グラスモーフィズム世界観から浮いていた。本体 .card / .modal-content /
+   .settings-btn の語彙に揃えて全面リライト。
+   - [ OPS ] 起動ボタン → 本体 .settings-btn と同じ角丸4px、SVG+テキスト
+   - パネル背景 → .modal-content と同じ rgba(8, 14, 28, 0.85)
+   - パネル上端 → .modal-content::before と同じ水平発光ライン
+   - 各操作項目 → .card と同じグラスカード(border-radius 14px、上端微発光)
+   - 装飾文言は廃止し、見出しは最小限のモノスペース小ラベルに
+   STEP 2 で本体に統合した時、外観差異がほぼゼロになる設計。 */
+
+/* OPS バー — modal-header の上に独立した1段。本体 .settings-container の
+   思想に準拠:右寄せ、controls だけが入る薄い帯。 */
+.ops-bar {
+    width: 100%;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0 6px;
 }
-.action-bar .ab-label {
-    font-family: var(--text-mono);
-    font-size: 9px;
-    letter-spacing: 0.32em;
-    color: rgba(226, 232, 240, 0.4);
-    margin-bottom: 12px;
-    text-align: center;
-    text-transform: uppercase;
-}
-.action-bar .ab-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+
+/* [ OPS ] 起動ボタン — 本体 .settings-btn パターンに完全準拠。
+   v7.7 改: 絶対配置を廃止し、.ops-bar の中に通常配置。
+   アイコンは「3本の水平フェーダー」— SF計器盤・ミキシングコンソール風で、
+   "データを操作する" 意図が直観的に伝わる。本体の歯車・クリップボード
+   アイコンと形状が完全に重複しない。 */
+.ops-launcher {
+    cursor: pointer;
+    opacity: 0.55;
+    transition: all 0.4s ease;
+    display: flex;
+    align-items: center;
     gap: 8px;
-}
-.action-bar button {
-    padding: 11px 14px;
+    padding: 6px 12px;
+    border: 1px solid rgba(0, 242, 254, 0.2);
+    border-radius: 4px;
     background: rgba(0, 242, 254, 0.04);
-    border: 1px solid rgba(0, 242, 254, 0.22);
-    color: rgba(226, 232, 240, 0.85);
     font-family: var(--text-mono);
-    font-size: 11px;
+    font-size: 0.65rem;
+    letter-spacing: 0.25em;
+    color: rgba(0, 242, 254, 0.8);
+    text-transform: uppercase;
+    user-select: none;
+}
+.ops-launcher:hover {
+    opacity: 1;
+    border-color: var(--accent-cyan);
+    background: rgba(0, 242, 254, 0.1);
+    box-shadow: 0 0 15px rgba(0, 242, 254, 0.2);
+}
+.ops-launcher svg {
+    width: 14px;
+    height: 14px;
+}
+/* hover 時にフェーダーが微妙に光る計器盤の演出 */
+.ops-launcher:hover svg .ops-knob {
+    fill: var(--accent-cyan);
+    filter: drop-shadow(0 0 3px var(--accent-cyan));
+}
+
+/* 背景オーバーレイ — 本体 .modal-overlay と同じトーン
+   (薄い blur と少し青寄りの暗転)*/
+.ops-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 4, 10, 0);
+    backdrop-filter: blur(0px);
+    opacity: 0;
+    pointer-events: none;
+    transition: background 0.32s ease, backdrop-filter 0.32s ease, opacity 0.32s ease;
+    /* confirm-overlay(200) より下に。 */
+    z-index: 100;
+}
+.ops-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+    background: rgba(2, 4, 10, 0.45);
+    backdrop-filter: blur(8px) saturate(120%);
+}
+
+/* パネル本体 — .modal-content の質感を借り、右からスライドイン */
+.ops-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    background: rgba(8, 14, 28, 0.85);
+    backdrop-filter: blur(15px) saturate(120%);
+    -webkit-backdrop-filter: blur(15px) saturate(120%);
+    border-left: 1px solid rgba(0, 242, 254, 0.35);
+    box-shadow: -20px 0 60px rgba(0, 0, 0, 0.7),
+                 0 0 100px rgba(0, 242, 254, 0.12),
+                 inset 0 0 60px rgba(0, 242, 254, 0.03);
+    transform: translateX(100%);
+    transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+    z-index: 110;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: fixed;  /* 念のため再宣言 */
+}
+.ops-panel.active {
+    transform: translateX(0);
+}
+/* パネル左端の発光ライン — .modal-content::before の縦版 */
+.ops-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -1px;
+    width: 2px;
+    background: linear-gradient(180deg, transparent, var(--accent-cyan), transparent);
+    box-shadow: 0 0 16px var(--accent-cyan);
+    opacity: 0;
+    transition: opacity 0.4s ease 0.1s;
+}
+.ops-panel.active::before {
+    opacity: 0.6;
+}
+
+/* パネル内ヘッダー — .modal-header h2 の語彙 */
+.ops-panel-header {
+    padding: 20px 22px 16px;
+    position: relative;
+}
+.ops-panel-header .ops-title {
+    font-family: var(--text-display);
+    font-size: 0.85rem;
+    letter-spacing: 0.4em;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    text-shadow: 0 0 16px rgba(0, 242, 254, 0.4);
+    text-align: left;
+    font-weight: 500;
+}
+.ops-panel-header .ops-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: rgba(0, 242, 254, 0.04);
+    border: 1px solid rgba(0, 242, 254, 0.2);
+    color: rgba(0, 242, 254, 0.7);
+    font-family: var(--text-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.25em;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.55;
+}
+.ops-panel-header .ops-close:hover {
+    opacity: 1;
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+    background: rgba(0, 242, 254, 0.1);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
+}
+
+/* パネル内コンテンツ — スクロール可 */
+.ops-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 18px 24px;
+}
+
+/* セクター見出し — .card-tag の質感に揃え、控えめに */
+.ops-sector {
+    font-family: var(--text-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.28em;
+    color: rgba(0, 242, 254, 0.5);
+    text-transform: uppercase;
+    margin: 18px 0 8px 4px;
+}
+.ops-sector:first-child { margin-top: 8px; }
+
+/* 各操作項目 — .card の質感を借り、それぞれを小さなグラスカードに */
+.ops-action {
+    margin-bottom: 10px;
+    background: var(--card-glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+.ops-action::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan-soft), transparent);
+    opacity: 0.4;
+}
+.ops-action:hover {
+    border-color: var(--card-border-hover);
+    background: var(--card-glass-hover);
+}
+.ops-action.danger::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 107, 107, 0.5), transparent);
+}
+.ops-action.danger {
+    border-color: rgba(255, 107, 107, 0.18);
+}
+.ops-action.danger:hover {
+    border-color: rgba(255, 107, 107, 0.4);
+    background: rgba(28, 14, 14, 0.55);
+}
+
+.ops-action button {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: rgba(226, 232, 240, 0.92);
+    font-family: var(--text-mono);
+    font-size: 0.72rem;
     letter-spacing: 0.18em;
     cursor: pointer;
-    transition: all 0.18s;
     text-transform: uppercase;
+    text-align: left;
+    padding: 0;
 }
-.action-bar button:hover {
-    background: rgba(0, 242, 254, 0.1);
-    border-color: var(--accent-cyan);
+.ops-action:hover button {
     color: var(--accent-cyan);
-    box-shadow: 0 0 16px rgba(0, 242, 254, 0.18);
+    text-shadow: 0 0 8px rgba(0, 242, 254, 0.3);
 }
-.action-bar button.danger {
-    border-color: rgba(255, 107, 107, 0.3);
+.ops-action.danger button {
     color: rgba(255, 107, 107, 0.85);
 }
-.action-bar button.danger:hover {
-    background: rgba(255, 107, 107, 0.1);
-    border-color: var(--accent-warning);
+.ops-action.danger:hover button {
     color: var(--accent-warning);
-    box-shadow: 0 0 16px rgba(255, 107, 107, 0.22);
+    text-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
+}
+.ops-action .ops-desc {
+    margin-top: 6px;
+    font-family: var(--text-body);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: rgba(226, 232, 240, 0.5);
+    line-height: 1.5;
+}
+
+/* モバイル: パネル幅を画面幅の85%に */
+@media (max-width: 480px) {
+    .ops-panel {
+        width: 85vw;
+    }
+    .ops-launcher {
+        font-size: 0.55rem;
+        letter-spacing: 0.15em;
+        padding: 5px 10px;
+    }
+    .ops-launcher svg {
+        width: 12px;
+        height: 12px;
+    }
+    .ops-bar { padding: 0 2px; }
 }
 
 /* CLOSE — 本体の .ck-close-link と同じ控えめなテキストリンク */
@@ -1437,7 +1658,12 @@ body.has-fullscreen-map {
 @media (max-width: 600px) {
     .modal-stage { padding: 20px 14px 60px; }
     .modal-header { padding: 0 12px; margin-bottom: 18px; }
-    .modal-header h2 { font-size: 13px; letter-spacing: 0.3em; }
+    .modal-header h2 {
+        /* v7.7 改: 本体に揃える(0.78rem / letter-spacing 0.3em / white-space normal)。 */
+        font-size: 0.78rem;
+        letter-spacing: 0.3em;
+        white-space: normal;
+    }
     .day-header .day-date { font-size: 18px; }
     .day-header { padding: 12px 14px; }
     .tl-hex-wrap { width: 50px; }
@@ -1493,11 +1719,35 @@ body.has-fullscreen-map {
 
 <div class="modal-stage" id="stage">
 
+    <!-- v7.7 改: OPS バー — 本体 .settings-container の思想に準拠。
+         modal-header の外、右寄せの独立した1段。ITINERARY タイトルの
+         中央揃え構造を壊さず、操作系コントロールだけを置く帯。 -->
+    <div class="ops-bar">
+        <!-- アイコン: 3本の水平フェーダー(ミキサー風)— SF計器盤・調整つまみ
+             として "データ操作" を直観的に示唆。本体のCHECKLIST(クリップボード)・
+             CONFIG(歯車)と形状が完全に独立。 -->
+        <div class="ops-launcher" id="btn-ops-open" role="button" tabindex="0" aria-label="Open Operations Panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <!-- 上段スライダー -->
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <circle class="ops-knob" cx="9" cy="6" r="2" fill="currentColor" stroke="none"/>
+                <!-- 中段スライダー -->
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <circle class="ops-knob" cx="16" cy="12" r="2" fill="currentColor" stroke="none"/>
+                <!-- 下段スライダー -->
+                <line x1="3" y1="18" x2="21" y2="18"/>
+                <circle class="ops-knob" cx="7" cy="18" r="2" fill="currentColor" stroke="none"/>
+            </svg>
+            <span>OPS</span>
+        </div>
+    </div>
+
     <!-- HEADER (CHECKLIST/CONFIGに揃えた中央寄せ) -->
     <header class="modal-header">
         <h2 id="modal-title">ITINERARY</h2>
         <div class="subtitle" id="mission-subtitle">—</div>
-        <div class="operator" id="mission-operator">OPERATOR: —</div>
+        <!-- v7.7: operator 表示はヘッダーから削除(表示のための表示を避ける)。
+             データモデル meta.operator は残してあるため、将来「メタ情報詳細」等で復活可能。 -->
         <div class="header-divider"></div>
     </header>
 
@@ -1546,21 +1796,20 @@ body.has-fullscreen-map {
     </div>
 
     <!-- ACTION BAR (最下段) -->
-    <div class="action-bar">
-        <div class="ab-label">DATA OPERATIONS</div>
-        <div class="ab-grid">
-            <button id="btn-import">📂 IMPORT (.itn.json)</button>
-            <button id="btn-export">💾 EXPORT</button>
-            <button id="btn-template">📋 NEW TEMPLATE</button>
-            <button id="btn-sample">↻ RELOAD SAMPLE</button>
-            <button id="btn-purge" class="danger">⚠ PURGE ALL</button>
-        </div>
-        <input type="file" id="file-input" class="file-input" accept=".json,.itn.json,application/json">
-    </div>
+    <!-- v7.7: 旧 .action-bar 廃止。代わりにヘッダー右上 [ OPS ] ボタン →
+         右からスライドする .ops-panel(コックピット風コマンドパネル)。
+         パネルは modal-stage の外、document.body 直下に置く必要がある
+         (modal-stage の overflow/transform の影響を避けるため、
+          ファイル末尾 </body> 直前に配置)。
+         ファイル input だけは form 不要の不可視要素なのでここに残す。 -->
+    <input type="file" id="file-input" class="file-input" accept=".json,.itn.json,application/json">
 
     <!-- CLOSE -->
     <div class="close-section">
-        <div class="close-hint">TAP <span class="kbd">OUTSIDE</span> · PRESS <span class="kbd">ESC</span> · OR USE LINK BELOW</div>
+        <!-- v7.7 改: close-hint は本体に存在しない独自要素だったため、
+             "TAP OUTSIDE · PRESS ESC ..." の冗長な表記を廃止し、
+             本体の計器盤的最小表記に揃える。 -->
+        <div class="close-hint">Press <span class="kbd">ESC</span> to close</div>
         <button id="btn-close" class="close-link">CLOSE</button>
     </div>
 
@@ -1873,6 +2122,60 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 }
 
+// ──────────────── 通貨記号フォーマッタ ────────────────
+// v7.7: ISO通貨コード(CAD, USD, JPY等)を読みやすい記号に変換。
+// ドル系は prefix で区別:USD は $、CAD は C$ など。
+// 知らない通貨コードは "18 XYZ" のようにスペース区切りで返す(後方互換)。
+const CURRENCY_SYMBOLS = {
+    // メジャー通貨
+    USD: '$',
+    EUR: '€',
+    JPY: '¥',
+    GBP: '£',
+    CHF: 'CHF ',   // フラン:記号がないので3文字+スペース
+    // ドル系(prefixで区別)
+    CAD: 'C$',
+    AUD: 'A$',
+    NZD: 'NZ$',
+    HKD: 'HK$',
+    SGD: 'S$',
+    TWD: 'NT$',
+    MXN: 'Mex$',
+    // アジア
+    CNY: '¥',      // 元(JPYと同記号だが文脈で判別可)
+    KRW: '₩',
+    THB: '฿',
+    INR: '₹',
+    PHP: '₱',
+    VND: '₫',
+    IDR: 'Rp',
+    MYR: 'RM',
+    // その他
+    SEK: 'kr ',
+    NOK: 'kr ',
+    DKK: 'kr ',
+    PLN: 'zł ',
+    RUB: '₽',
+    BRL: 'R$',
+    ZAR: 'R',
+    TRY: '₺',
+    AED: 'AED ',
+    SAR: 'SAR '
+};
+function fmtMoney(amount, currency) {
+    if (amount == null) return '';
+    const num = Number(amount).toLocaleString();
+    if (!currency) return num;
+    const sym = CURRENCY_SYMBOLS[currency];
+    if (sym) {
+        // 記号末尾がスペースなら間にスペースを入れた整形済み(CHF/SEK等)、
+        // 記号末尾が記号文字なら詰める($18, ¥580 等)。
+        return `${sym}${num}`;
+    }
+    // 未知通貨コードはコードのまま後置
+    return `${num} ${escapeHtml(currency)}`;
+}
+
 // ──────────────── 自前 confirm ────────────────
 function ckConfirm(msg, opts = {}) {
     return new Promise(resolve => {
@@ -1961,7 +2264,7 @@ function renderAll() {
 function renderHeader() {
     const m = state.itn.meta || {};
     $('#mission-subtitle').textContent = `${m.subtitle || ''}${m.title ? ' · ' + m.title : ''}`.trim();
-    $('#mission-operator').textContent = `OPERATOR: ${m.operator || '—'}`.toUpperCase();
+    // v7.7: operator はヘッダーから削除済み。データは meta.operator に保持。
 }
 
 function renderScrubber() {
@@ -2163,10 +2466,11 @@ function renderEventCard(ev, evIdx, dayDate) {
         badges.push(`<span class="badge companion-${ev.companion}">${c.icon} ${c.label}</span>`);
     }
     if (ev.fare?.amount) {
-        badges.push(`<span class="badge fare">${ev.fare.amount.toLocaleString()} ${escapeHtml(ev.fare.currency || '')}</span>`);
+        // v7.7: fmtMoney で通貨記号化(C$, $, ¥, €など)。
+        badges.push(`<span class="badge fare">${fmtMoney(ev.fare.amount, ev.fare.currency)}</span>`);
     }
     if (ev.admission && (ev.admission.amount === 0 || ev.admission.amount)) {
-        const a = ev.admission.amount === 0 ? 'FREE' : `${ev.admission.amount.toLocaleString()} ${escapeHtml(ev.admission.currency || '')}`;
+        const a = ev.admission.amount === 0 ? 'FREE' : fmtMoney(ev.admission.amount, ev.admission.currency);
         badges.push(`<span class="badge admission">⛛ ${a}</span>`);
     }
     const badgesHtml = badges.length ? `<div class="card-row">${badges.join('')}</div>` : '';
@@ -2882,5 +3186,104 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 </script>
+
+<!-- v7.7 改: OPS パネル — 本体 .modal-content / .card の世界観に揃えた
+     データ操作パネル。SF独自装飾は廃止し、グラスカード + 発光ラインの
+     本体ボキャブラリーで統一。STEP 2 で本体に統合する際の外観差異が
+     ほぼゼロになる設計。 -->
+<div class="ops-backdrop" id="ops-backdrop"></div>
+<aside class="ops-panel" id="ops-panel" role="dialog" aria-labelledby="ops-title" aria-modal="true">
+    <div class="ops-panel-header">
+        <div class="ops-title" id="ops-title">OPERATIONS</div>
+        <button class="ops-close" id="btn-ops-close" aria-label="Close">CLOSE</button>
+    </div>
+    <div class="ops-panel-body">
+
+        <div class="ops-sector">Storage I/O</div>
+        <div class="ops-action">
+            <button id="btn-import">📂 Import .itn.json</button>
+            <div class="ops-desc">Load itinerary from external file. Replaces current data.</div>
+        </div>
+        <div class="ops-action">
+            <button id="btn-export">💾 Export</button>
+            <div class="ops-desc">Save current itinerary as .itn.json file.</div>
+        </div>
+
+        <div class="ops-sector">Initialize</div>
+        <div class="ops-action">
+            <button id="btn-template">📋 New Template</button>
+            <div class="ops-desc">Generate a blank itinerary. Start a new trip from scratch.</div>
+        </div>
+        <div class="ops-action">
+            <button id="btn-sample">↻ Reload Sample</button>
+            <div class="ops-desc">Restore the sample data (Vancouver tour). Useful for testing.</div>
+        </div>
+
+        <div class="ops-sector">Destructive</div>
+        <div class="ops-action danger">
+            <button id="btn-purge">⚠ Purge All</button>
+            <div class="ops-desc">Permanently delete all stored itinerary data. Cannot be undone.</div>
+        </div>
+
+    </div>
+</aside>
+
+<script>
+// v7.7: OPS パネル開閉ロジック
+(function setupOpsPanel() {
+    const panel = document.getElementById('ops-panel');
+    const backdrop = document.getElementById('ops-backdrop');
+    const btnOpen = document.getElementById('btn-ops-open');
+    const btnClose = document.getElementById('btn-ops-close');
+    if (!panel || !backdrop || !btnOpen || !btnClose) return;
+
+    function open() {
+        panel.classList.add('active');
+        backdrop.classList.add('active');
+        // 開いた直後、close ボタンにフォーカスを移すと
+        // 連続して ESC で閉じる動作が自然になる
+        setTimeout(() => btnClose.focus(), 50);
+    }
+    function close() {
+        panel.classList.remove('active');
+        backdrop.classList.remove('active');
+        // 開いたボタンにフォーカスを戻す
+        btnOpen.focus();
+    }
+
+    btnOpen.addEventListener('click', open);
+    // role="button" の div なので、Enter/Space キーでも開けるように
+    btnOpen.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+        }
+    });
+    btnClose.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+
+    // ESC キーで閉じる(ただし confirm モーダル等が開いていたら無視)。
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && panel.classList.contains('active')) {
+            // confirm モーダルが上に乗っている場合は閉じない
+            const conf = document.getElementById('confirm-overlay');
+            if (conf && conf.classList.contains('active')) return;
+            close();
+        }
+    });
+
+    // データ操作ボタンを押した後はパネルを自動で閉じる
+    // (操作の結果は背景の行程表に反映されるため、パネルを残す意味は薄い)。
+    // ただし PURGE は ckConfirm のキャンセル可能性があるため、close は
+    // 各ハンドラ側で行うのではなく、ボタンクリック後に汎用で close する。
+    panel.querySelectorAll('.ops-action button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            // confirm モーダルが出るタイプは少し遅らせて閉じる
+            setTimeout(close, 50);
+        });
+    });
+})();
+</script>
+
 </body>
 </html>
