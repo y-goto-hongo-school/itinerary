@@ -237,7 +237,10 @@ body::after {
 }
 .map-section .map-coords {
     position: absolute;
-    bottom: 10px; right: 14px;
+    /* v7-step3: Leaflet attribution(右下)と重なっていた問題を解消。
+       attribution は高さ約 14px 程度なので、bottom を 24px に上げて
+       attribution の真上に乗せる。 */
+    bottom: 24px; right: 14px;
     font-family: var(--text-mono);
     font-size: 9px;
     color: rgba(0, 242, 254, 0.6);
@@ -248,7 +251,9 @@ body::after {
 }
 .map-section .map-zoom-info {
     position: absolute;
-    bottom: 10px; left: 14px;
+    /* zoom-info は左下、attribution は右下なので元々重ならないが
+       map-coords と高さを揃えるため bottom も同じ値に */
+    bottom: 24px; left: 14px;
     font-family: var(--text-mono);
     font-size: 9px;
     color: rgba(0, 242, 254, 0.6);
@@ -286,13 +291,13 @@ body::after {
 
   v7-step2: 実機で「暗すぎる、Google Maps Dark レベルが欲しい」とフィードバック。
   Dark Matter は元々控えめなコントラストなので、brightness と contrast を底上げ。
-  - brightness(1.5): 道路・地名の白要素を強く浮かび上がらせる
+  - brightness(2.0): 道路・地名の白要素を強く浮かび上がらせる (v7-step3 で 1.5→2.0 に増強)
   - contrast(1.25): 背景の黒との分離を強化、メリハリを出す
   - hue-rotate(-8deg): わずかにcyan寄りに、世界観の cyan 計器盤と統一
   - saturate(0.92): 強い原色(公園の濃緑など)を抑える
 */
 .leaflet-tile-pane {
-    filter: brightness(1.5) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
+    filter: brightness(2.0) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
 }
 /* マーカーや線は filter の影響を受けないよう除外 */
 .leaflet-marker-pane,
@@ -731,59 +736,44 @@ body.has-fullscreen-map {
   - 時刻はカード内、左上の小さな固定領域に
   - 左の色帯は廃止、代わりに六角形そのものが色担当
 */
+/*
+  v7-step3: 連続spine + 連続パルス設計に書き換え。
+  v6/v7-step2 までは spine を各 .tl-hex-wrap の ::before/::after で
+  「アイテムごとに分割描画」していたが、アイテム境界で線本体やパルスが
+  重なって不自然な輝点が出る問題があった。
+  そこで設計を大幅に単純化:
+  - spine は .timeline 全体に1本だけ(::before)
+  - パルスも .timeline 全体を貫く独立divを複数(3つ)、等間隔で流す
+  - 六角形は spine の上に z-index で乗せて、視覚的に「貫く」演出に
+  - パルスが六角形の背後を通る瞬間は隠れる(許容)
+*/
 .timeline {
     position: relative;
     padding-left: 4px;
 }
-/*
-  spine = 時間軸の主役。
-  v5: 点線 → 太い実線 + 中央を流れる光のパルスアニメ(電流が流れる感じ)
-  - 線本体:幅2px、グラデーション(上下に淡く)
-  - パルス:上から下へ移動する光点、ループアニメ
-*/
-.tl-hex-wrap::before,
-.tl-hex-wrap::after {
+/* 連続spine本体 — .timeline の高さ全体を貫く1本の線 */
+.timeline::before {
     content: '';
     position: absolute;
-    left: 50%;
+    /* tl-hex-wrap (width 56px) の中心 = padding-left 4px から 28px の地点。
+       モバイルでは tl-hex-wrap が 50px → 中心 25px(下のメディアクエリで上書き)*/
+    left: 32px;  /* 4 + 28 */
     transform: translateX(-50%);
+    top: 0;
+    bottom: 0;
     width: 2px;
-    /* 線本体:cyanのうっすらしたベース */
-    background:
-        linear-gradient(to bottom,
-            rgba(0, 242, 254, 0.5) 0%,
-            rgba(0, 242, 254, 0.5) 100%);
+    background: rgba(0, 242, 254, 0.5);
     pointer-events: none;
     z-index: 0;
-    overflow: hidden;
 }
-/* spine 上半分:itemの上端から六角形の上端まで(余白なし) */
-.tl-hex-wrap::before {
-    top: -7px;             /* card の margin-top 7px を補正、上のアイテムと繋ぐ */
-    height: calc(50% - 25px + 7px);
-}
-/* spine 下半分:六角形の下端からitemの下端まで(次のアイテムまで繋ぐ) */
-.tl-hex-wrap::after {
-    top: calc(50% + 25px);
-    bottom: -7px;          /* card の margin-bottom 7px を補正 */
-}
-/* 最初のアイテムは上半分のspine不要 */
-.tl-item:first-child .tl-hex-wrap::before { display: none; }
-/* 最後のアイテムは下半分のspine不要 */
-.tl-item:last-child .tl-hex-wrap::after { display: none; }
-
 /*
-  電流パルス:spine の上を流れる光の点。
-  各アイテムの下半分のspine の中で、上から下へ周期的に流れる。
-  別のdivで実装:tl-item に absolute で乗せる。
+  電流パルス:.timeline の上を流れる光の点。
+  3本のパルスが等間隔(2秒おき)で順番に発射されて、上から下まで6秒かけて走る。
+  パターンB(複数パルスが連続流れ)実装。
 */
 .tl-pulse {
     position: absolute;
-    /*
-      tl-item の左から:tl-hex-wrap (width 56px) の中心 = 28px
-      モバイルでは tl-hex-wrap が 50px → 中心 25px
-    */
-    left: 28px;
+    left: 32px;  /* spineと同じ x 座標 */
     transform: translateX(-50%);
     width: 6px;
     height: 18px;
@@ -794,43 +784,28 @@ body.has-fullscreen-map {
     pointer-events: none;
     z-index: 1;
     filter: blur(1.5px);
-    animation: pulse-flow 2.4s ease-in-out infinite;
+    animation: pulse-flow 6s linear infinite;
     opacity: 0;
 }
 @keyframes pulse-flow {
     /*
-      v7-step2: アイテム間の margin 境界(14px)でパルスが重なって
-      過剰に明るくなる問題を解消。
-      - 開始位置を六角形のすぐ下から
-      - 終端をアイテムの 100% きっかりに(margin領域を走らない)
-      - 終端で完全に消えて、次のアイテムのパルスが自然に引き継ぐ
+      6秒で .timeline の上から下まで走る。
+      上端と下端でフェードイン/アウトして、ループの境目を見えにくくする。
     */
-    0%   { top: calc(50% + 25px); opacity: 0; }
-    15%  { opacity: 1; }
-    80%  { opacity: 1; }
-    100% { top: 100%; opacity: 0; }
+    0%   { top: -18px; opacity: 0; }
+    5%   { opacity: 1; }
+    95%  { opacity: 1; }
+    100% { top: calc(100% + 0px); opacity: 0; }
 }
-/* 最後のアイテムにはパルス不要 */
-.tl-item:last-child .tl-pulse { display: none; }
-
-/* アイテムごとにアニメの開始位相をずらして、複数のパルスが連続して流れる演出。
-   v7-step2: 隣接アイテム間でパルスが同時刻に同じ位置に来てチカチカするのを
-   防ぐため、delay 間隔を 0.3s → 0.6s に広げる(2.4s周期に対して1/4ずつずらす)。 */
-.tl-item:nth-child(1) .tl-pulse { animation-delay: 0s; }
-.tl-item:nth-child(2) .tl-pulse { animation-delay: 0.6s; }
-.tl-item:nth-child(3) .tl-pulse { animation-delay: 1.2s; }
-.tl-item:nth-child(4) .tl-pulse { animation-delay: 1.8s; }
-.tl-item:nth-child(5) .tl-pulse { animation-delay: 0.3s; }
-.tl-item:nth-child(6) .tl-pulse { animation-delay: 0.9s; }
-.tl-item:nth-child(7) .tl-pulse { animation-delay: 1.5s; }
-.tl-item:nth-child(8) .tl-pulse { animation-delay: 2.1s; }
+/* 3本のパルスを等間隔(2秒おき)で発射 */
+.tl-pulse:nth-of-type(1) { animation-delay: 0s; }
+.tl-pulse:nth-of-type(2) { animation-delay: 2s; }
+.tl-pulse:nth-of-type(3) { animation-delay: 4s; }
 
 .tl-item {
     position: relative;
     display: flex;
     align-items: stretch;
-    /* margin-bottom 廃止:電流パルスが途切れないようにアイテム間に空白を入れない。
-       カードの上下のpaddingで自然な余白は確保される */
     margin-bottom: 0;
     padding-bottom: 0;
     animation: fade-in-up 0.45s ease both;
@@ -905,6 +880,10 @@ body.has-fullscreen-map {
     font-size: 8px;
     font-weight: 700;
     letter-spacing: 0.18em;
+    /* v7-step3: letter-spacing は最後の文字の右側にも空白を加えるため、
+       padding が左右均等(6px)だと「左に詰まって見える」状態になる。
+       右パディングを letter-spacing 1文字ぶん減らして視覚的中央に揃える。 */
+    text-indent: 0.18em;           /* 頭にも letter-spacing 相当の余白 */
     color: var(--cat-color, var(--accent-cyan));
     background: var(--bg-deep);
     padding: 2px 6px;
@@ -922,7 +901,7 @@ body.has-fullscreen-map {
     background: var(--card-glass);
     border: 1px solid var(--card-border);
     margin-left: -8px; /* 六角形と重なる */
-    margin-top: 7px;       /* アイテム間の空気感(margin廃止の代替) */
+    margin-top: 7px;       /* アイテム間の空気感 */
     margin-bottom: 7px;
     padding: 12px 14px 12px 22px; /* 左パディングは食い込みぶん広く */
     backdrop-filter: blur(6px);
@@ -1401,10 +1380,11 @@ body.has-fullscreen-map {
     .tl-card .card-name { font-size: 14px; }
     .map-controls button { width: 28px; height: 28px; font-size: 13px; }
 
-    /* spine 再計算:六角形 44px → 半分 22px */
-    .tl-hex-wrap::before { height: calc(50% - 22px); }
-    .tl-hex-wrap::after  { top: calc(50% + 22px); }
-    .tl-pulse { left: 25px; }   /* モバイル wrap中心 */
+    /* v7-step3: 連続spineに伴い、モバイルでも .timeline::before / .tl-pulse の
+       x座標を再計算。tl-hex-wrap が 50px → 中心 25px、 padding-left 4px →
+       合計 29px。 */
+    .timeline::before { left: 29px; }
+    .tl-pulse { left: 29px; }
 
     /*
       スマホ:スティッキー地図。
@@ -1911,6 +1891,15 @@ function renderDay() {
     d.events.forEach((ev, evIdx) => {
         tl.appendChild(renderEventCard(ev, evIdx));
     });
+
+    // v7-step3: タイムライン全体を流れる連続パルスを3本挿入。
+    // 各パルスは CSS の nth-of-type で異なる animation-delay を持ち、
+    // 等間隔(2秒おき)で上から下へ流れる。
+    for (let i = 0; i < 3; i++) {
+        const pulse = document.createElement('div');
+        pulse.className = 'tl-pulse';
+        tl.appendChild(pulse);
+    }
 }
 
 function renderEventCard(ev, evIdx) {
@@ -1924,10 +1913,9 @@ function renderEventCard(ev, evIdx) {
     item.className = `tl-item cat-${cls}`;
     item.dataset.eventIdx = evIdx;
 
-    // 電流パルス(時間軸を流れる光) — spineの上を流れる
-    const pulse = document.createElement('div');
-    pulse.className = 'tl-pulse';
-    item.appendChild(pulse);
+    // v7-step3: tl-pulse は .timeline 直下に3つだけ配置する設計に変更したため、
+    // tl-item ごとの pulse 生成は廃止。renderDay() で .timeline 全体に
+    // 3つの .tl-pulse をまとめて挿入する。
 
     // 六角形(色担当)
     const hexWrap = document.createElement('div');
