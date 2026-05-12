@@ -291,13 +291,13 @@ body::after {
 
   v7-step2: 実機で「暗すぎる、Google Maps Dark レベルが欲しい」とフィードバック。
   Dark Matter は元々控えめなコントラストなので、brightness と contrast を底上げ。
-  - brightness(2.0): 道路・地名の白要素を強く浮かび上がらせる (v7-step3 で 1.5→2.0 に増強)
+  - brightness(2.3): 道路・地名の白要素を強く浮かび上がらせる (v7-step3 で 1.5→2.0、v7-step5 で 2.0→2.3 に増強)
   - contrast(1.25): 背景の黒との分離を強化、メリハリを出す
   - hue-rotate(-8deg): わずかにcyan寄りに、世界観の cyan 計器盤と統一
   - saturate(0.92): 強い原色(公園の濃緑など)を抑える
 */
 .leaflet-tile-pane {
-    filter: brightness(2.0) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
+    filter: brightness(2.3) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
 }
 /* マーカーや線は filter の影響を受けないよう除外 */
 .leaflet-marker-pane,
@@ -750,8 +750,16 @@ body.has-fullscreen-map {
 .timeline {
     position: relative;
     padding-left: 4px;
+    /* v7-step5: stacking context を確立して、.tl-pulse (z:-1) を
+       .timeline の内側に閉じ込める。これがないと、外側の親要素まで
+       パルスが背面に潜って予期せぬ場所に出てしまう可能性がある。
+       isolation: isolate は z-index 影響なく context を作る安全な方法。 */
+    isolation: isolate;
 }
-/* 連続spine本体 — .timeline の高さ全体を貫く1本の線 */
+/* 連続spine本体 — .timeline の高さ全体を貫く1本の線
+   v7-step5: 上端と下端を最初/最後の六角形の中心に揃える。
+   JS が --spine-top / --spine-bottom を .timeline に設定する。
+   未設定の場合は 0(タイムライン全体貫通)。 */
 .timeline::before {
     content: '';
     position: absolute;
@@ -759,8 +767,8 @@ body.has-fullscreen-map {
        モバイルでは tl-hex-wrap が 50px → 中心 25px(下のメディアクエリで上書き)*/
     left: 32px;  /* 4 + 28 */
     transform: translateX(-50%);
-    top: 0;
-    bottom: 0;
+    top: var(--spine-top, 0);
+    bottom: var(--spine-bottom, 0);
     width: 2px;
     background: rgba(0, 242, 254, 0.5);
     pointer-events: none;
@@ -782,7 +790,11 @@ body.has-fullscreen-map {
         rgba(0, 242, 254, 0.9) 50%,
         transparent 100%);
     pointer-events: none;
-    z-index: 1;
+    /* v7-step5: パルスが六角形の手前を通る問題の根本対策。
+       z-index -1 にして、.timeline の中で最背面に確定配置する。
+       .timeline 側で position:relative を維持していれば、
+       パルスは .timeline の中に閉じ込められたまま最背面で流れる。 */
+    z-index: -1;
     filter: blur(1.5px);
     animation: pulse-flow 6s linear infinite;
     opacity: 0;
@@ -791,14 +803,15 @@ body.has-fullscreen-map {
     /*
       .timeline の上から下まで走る。
       v7-step4: --pulse-start-y を CSS変数で外部から指定可能に。
+      v7-step5: 終端も --pulse-end-y で指定可能に(最後の六角形で消える)。
       過去のセグメントには発射されないよう、JS が「最初の non-past アイテム
       の y座標」を .timeline に CSS variable として設定する。
-      未設定の場合は 0(上から走る)。
+      未設定の場合は 0(上から走る) → 100%(下まで走る)。
     */
     0%   { top: var(--pulse-start-y, -18px); opacity: 0; }
     5%   { opacity: 1; }
     95%  { opacity: 1; }
-    100% { top: calc(100% + 0px); opacity: 0; }
+    100% { top: var(--pulse-end-y, 100%); opacity: 0; }
 }
 /* 3本のパルスの animation-delay は JS 側で inline style で設定する
    (v7-step4: CSS の :nth-of-type は他の div と競合して効かないため) */
@@ -833,32 +846,24 @@ body.has-fullscreen-map {
 /*
   v7-step4: 過去/現在/未来の状態別演出
   - status-past:   カード全体を暗く(opacity 0.45)、過去と直感的に分かる
-  - status-now:    通常表示 + わずかな強調(cyan の左縁ライン)
   - status-future: 通常表示
+  - status-now:    通常表示(特別演出なし — 暗化した過去の中で明るく見える
+                   最初のものが「現在」と自然に認識できる、Less is more)
   すべての要素(六角形・カード・電流)が opacity の影響を受けるため、
   自然に「過去はトーンダウン」した雰囲気になる。
-*/
+  v7-step5: !important を付加。fade-in-up animation の終了状態 opacity:1 が
+  通常のセレクタより強く効くため、!important で勝負を確定させる必要がある。 */
 .tl-item.status-past {
-    opacity: 0.45;
+    opacity: 0.45 !important;
     transition: opacity 0.3s;
 }
 .tl-item.status-past:hover {
     /* 過去でも参照したい時にホバーで一時的に明るくする */
-    opacity: 0.85;
+    opacity: 0.85 !important;
 }
-.tl-item.status-now .tl-card {
-    /* 現在進行中のイベント:cyan のうっすらした強調縁
-       border-left ではなく box-shadow inset で内側に光らせる(カードの
-       clip-path で切られない側に) */
-    box-shadow: inset 4px 0 0 var(--accent-cyan),
-                0 0 24px rgba(0, 242, 254, 0.18);
-    border-color: rgba(0, 242, 254, 0.4);
-}
-.tl-item.status-now .tl-hex {
-    /* 進行中の六角形は少し強く光らせる */
-    box-shadow: 0 0 28px var(--cat-glow, rgba(0, 242, 254, 0.6)),
-                0 0 12px var(--cat-color, rgba(0, 242, 254, 0.8));
-}
+/* v7-step5: status-now の特別演出は廃止。
+   過去カードが暗化されたので、通常の明るさで表示される最初のものが
+   自然に「現在」と分かる(ユーザーの観察に基づく設計判断)。 */
 
 /* 六角形(色担当の主役) */
 .tl-hex-wrap {
@@ -895,7 +900,8 @@ body.has-fullscreen-map {
     z-index: 2;
     font-size: 18px;
     line-height: 1;
-    margin-top: -10px;       /* アイコンを上半分に寄せる(下半分はネームプレート用) */
+    /* v7-step5: ネームプレートが六角形外に移動した(+15px下)ため、
+       アイコンを上に寄せる必要がなくなった。中央配置に戻す。 */
     filter: drop-shadow(0 0 6px var(--cat-glow, rgba(0, 242, 254, 0.5)));
 }
 /*
@@ -1994,13 +2000,29 @@ function renderDay() {
     }
 
     // v7-step4: パルスの発射起点を「最初の non-past イベント」の y座標に。
+    // v7-step5: spine も「最初の六角形の中心 → 最後の六角形の中心」に閉じる。
     // 過去のセグメントはパルスが流れない演出。
     // DOM レイアウト確定後に offsetTop を測る必要があるため、requestAnimationFrame で次フレームに。
     requestAnimationFrame(() => {
+        // 全イベントの六角形中心の y座標を測定
+        const items = Array.from(tl.querySelectorAll('.tl-item'));
+        if (items.length > 0) {
+            const firstItem = items[0];
+            const lastItem  = items[items.length - 1];
+            const firstHexY = firstItem.offsetTop + firstItem.offsetHeight / 2;
+            const lastHexY  = lastItem.offsetTop  + lastItem.offsetHeight  / 2;
+            // spine の top と bottom を六角形の中心に。
+            tl.style.setProperty('--spine-top', `${firstHexY}px`);
+            // bottom は .timeline 下端からの距離なので、 timeline 高さ - lastHexY
+            const tlH = tl.offsetHeight;
+            tl.style.setProperty('--spine-bottom', `${tlH - lastHexY}px`);
+            // パルスの終端も最後の六角形の中心に。
+            tl.style.setProperty('--pulse-end-y', `${lastHexY}px`);
+        }
+
+        // パルスの発射起点
         const firstActive = tl.querySelector('.tl-item:not(.status-past)');
         if (firstActive) {
-            // .tl-item の中心(六角形のy)をパルスが流れ始める位置とする。
-            // pulse の高さ 18px ぶん上から始める(キーフレームに合わせる)。
             const y = firstActive.offsetTop + firstActive.offsetHeight / 2;
             tl.style.setProperty('--pulse-start-y', `${y - 18}px`);
         } else {
