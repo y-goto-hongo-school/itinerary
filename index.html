@@ -976,9 +976,10 @@ body.has-fullscreen-map {
     margin-left: -8px; /* 六角形と重なる */
     margin-top: 7px;       /* アイテム間の空気感 */
     margin-bottom: 7px;
-    /* v7.9: padding-top は番号バッジ (top:6px) と時刻の重なり回避で 24px。
-       padding-left 22px は六角形 (44px幅) の右半分との重なりを避けるため。 */
-    padding: 24px 14px 12px 22px;
+    /* v7.9.1: 番号バッジが card-head 内に inline 化されたため、上部余白を確保する
+       必要が無くなった。padding-top を 24 → 12 に戻し、カードをコンパクトに。
+       padding-left 22px は六角形 (44px幅) の右半分との重なりを避けるため維持。 */
+    padding: 12px 14px 12px 22px;
     backdrop-filter: blur(6px);
     transition: all 0.2s;
     cursor: pointer;
@@ -997,27 +998,13 @@ body.has-fullscreen-map {
     border-color: var(--card-border-hover);
     transform: translateX(2px);
 }
-/* カードの右上にもコーナー装飾 — 計器盤らしさ */
-.tl-card::before {
-    content: '';
-    position: absolute;
-    top: 0; right: 0;
-    width: 8px; height: 8px;
-    border-top: 1px solid var(--cat-color, var(--accent-cyan));
-    border-right: 1px solid var(--cat-color, var(--accent-cyan));
-    opacity: 0.6;
-    pointer-events: none;
-}
-.tl-card::after {
-    content: '';
-    position: absolute;
-    bottom: 0; right: 0;
-    width: 8px; height: 8px;
-    border-bottom: 1px solid var(--cat-color, var(--accent-cyan));
-    border-right: 1px solid var(--cat-color, var(--accent-cyan));
-    opacity: 0.6;
-    pointer-events: none;
-}
+/* v7.9.1: 旧 ::before / ::after の L字コーナー装飾(右上・右下)は廃止。
+   理由:
+   - border-radius: 8px と width: 8px の L字が画面拡大時に微妙にズレて重なり、
+     角丸の弧をL字直線が切り欠く形になっていた。
+   - L字は純粋な装飾で機能を持たない(カテゴリ色は六角形+ネームプレートが担当済み)。
+   - 本体 .card には L字装飾はない(矢印 ▸ ORIGIN が代わりの装飾)。Less is more。
+   - 番号バッジが右上で唯一の右上要素となり、機能的視線誘導がクリーンに。 */
 
 /* カードヘッダー(時刻 + タイプラベル) */
 /*
@@ -1034,23 +1021,23 @@ body.has-fullscreen-map {
                  weight も 500 → 600 にして視認性を確保。
 */
 .tl-card .card-num-badge {
-    position: absolute;
-    top: 6px;
-    right: 12px;
+    /* v7.9.1: 時刻の右隣に inline 配置。card-head が flex 行となり、
+       justify-content: space-between で左=時刻、右=番号 が自動で揃う。
+       透明度は時刻(主役)より弱め(opacity 0.65)に抑えてバランスを取る。 */
     font-family: var(--text-mono);
-    /* v7.9: 0.55rem (本体 .card-tag と同値) では密に並ぶ行程表カード内では
-       読みにくかった。地図対応という「機能」を持つため、機能を果たすサイズに。
-       0.7rem (≒ 11.2px) で 2桁の番号 "02" が遠目でも判別可能。 */
-    font-size: 0.7rem;
+    font-size: 0.7rem;        /* ≒ 11.2px、密な行程表カード内でも読める最低限 */
     font-weight: 600;
     letter-spacing: 0.18em;
     line-height: 1;
-    color: var(--badge-color, rgba(243, 156, 18, 0.7));
+    color: var(--badge-color, rgba(243, 156, 18, 0.85));
+    opacity: 0.65;            /* 時刻より控えめに */
     background: transparent;
     border: 0;
     padding: 0;
     margin: 0;
-    pointer-events: none;  /* カードクリック(地図pan)を妨げないため */
+    align-self: center;       /* flex 内で垂直中央寄せ */
+    flex-shrink: 0;
+    pointer-events: none;
 }
 /* v7.7 までの [ NN ] 角括弧装飾は本体 .card-tag.right の語彙に揃えるため廃止。 */
 .tl-card .card-num-badge::before,
@@ -1061,10 +1048,15 @@ body.has-fullscreen-map {
    情報重複が過剰だったため削除。カテゴリ識別は六角形ネームプレート + cat-glow
    (六角形・カード枠コーナー) が担う設計に戻った。 */
 
-/* v7.8 (項目3-b延長): card-head は時刻のみを含む単純なラッパーに。
-   旧設計では card-type / card-num-badge と横並びだったため flex/gap/wrap が必要だったが、
-   いずれも絶対配置に移ったので簡素化。 */
+/* v7.9.1: card-head は時刻と番号バッジを横並びにする flex 行。
+   - 左端: card-time (主役)
+   - 右端: card-num-badge (updateCardNumBadges() が後挿入、控えめ)
+   時刻が無いイベントでも番号は右に来る。 */
 .tl-card .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
     margin-bottom: 6px;
 }
 /* v7.7 改 (項目3-b): 時刻を主役に。理由は引き継ぎ書参照。
@@ -1677,15 +1669,11 @@ body.has-fullscreen-map {
     .tl-hex .icon { font-size: 17px; }
     .tl-hex-wrap .hex-tag { font-size: 7px; }
     .tl-card {
-        /* v7.8 (項目3-b延長): モバイルでも右上タグ用に top パディング確保。
-           v7.9: 左タグ削除に伴い負担は半減したが、番号バッジ用 padding-top は維持。 */
-        padding: 22px 12px 11px 18px;
+        /* v7.9.1: 番号バッジが card-head 内に戻ったため、padding-top も通常値に。 */
+        padding: 11px 12px 11px 18px;
     }
-    /* v7.9: モバイル時の番号バッジは少し詰めるが、可読性を保つため
-       デスクトップ 0.7rem → モバイル 0.65rem 程度に。 */
+    /* v7.9.1: モバイル時の番号バッジは少し小さく。inline 配置なので位置調整は不要。 */
     .tl-card .card-num-badge {
-        top: 5px;
-        right: 10px;
         font-size: 0.65rem;
     }
     /* v7.7 改 (項目3-b): モバイルでも情報階層を保つ。
@@ -1907,6 +1895,17 @@ function categoryClass(cat) {
 }
 
 // ──────────────── サンプルデータ ────────────────
+//
+// transport イベントのフィールド指針 (v7.9.1 で整理):
+//   carrier   - 運行会社名 (例: "ANA", "BC Ferries", "JR / Keikyu")
+//   routeName - 便名 または 運行種別 のいずれか (任意フィールド)。
+//               便名 例: "NH116", "AC 008", "RC308"
+//               運行種別 例: "Charter", "Drop-off", "Express", "Local"
+//               【NG】"→ Tokyo Station" のようなルート記述は入れない。
+//                     from.name → to.name と完全に重複し、行程表で2回表示される。
+//                     ルートは from / to が自動で表示するため routeName は便名/種別専用。
+//   from/to   - 出発地/到着地 (name, coord, time, tz)。表示の主体はこちら。
+//
 const SAMPLE_ITN = {
     format: "itn-v1",
     meta: {
@@ -1923,7 +1922,7 @@ const SAMPLE_ITN = {
             date: "2026-07-20", dayLabel: "DAY 01",
             summary: "Departure for Canada — crossing the Date Line",
             events: [
-                { type: "transport", mode: "rail", carrier: "JR / Keikyu", routeName: "→ Haneda Airport",
+                { type: "transport", mode: "rail", carrier: "JR / Keikyu",
                   from: { name: "Shinjuku Stn.", coord: [35.6896, 139.7006], time: "16:00", tz: "Asia/Tokyo" },
                   to:   { name: "Haneda Airport T3", coord: [35.5494, 139.7798], time: "17:30", tz: "Asia/Tokyo" },
                   fare: { amount: 580, currency: "JPY" }, companion: "group",
@@ -1957,7 +1956,7 @@ const SAMPLE_ITN = {
                   to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "08:00", tz: "America/Vancouver" },
                   companion: "host",
                   notes: "Driven by your host family. Don't forget to say thanks." },
-                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "→ UBC Campus",
+                { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "Study Center", coord: [49.0846, -122.6017], time: "08:30", tz: "America/Vancouver" },
                   to:   { name: "UBC Campus", coord: [49.2606, -123.2460], time: "09:30", tz: "America/Vancouver" },
                   companion: "group" },
@@ -1975,7 +1974,7 @@ const SAMPLE_ITN = {
                   purpose: "Souvenirs, university merchandise",
                   companion: "friends",
                   notes: "Manage your own budget. A real-world chance to practice English at the register." },
-                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "UBC → Host area",
+                { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "UBC", coord: [49.2606, -123.2460], time: "14:30", tz: "America/Vancouver" },
                   to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "15:30", tz: "America/Vancouver" },
                   companion: "group" },
@@ -1988,11 +1987,11 @@ const SAMPLE_ITN = {
             date: "2026-07-28", dayLabel: "DAY 09",
             summary: "Victoria — full day excursion",
             events: [
-                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "→ Tsawwassen Ferry",
+                { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "Study Center", coord: [49.0846, -122.6017], time: "07:00", tz: "America/Vancouver" },
                   to:   { name: "Tsawwassen Terminal", coord: [49.0058, -123.1330], time: "08:00", tz: "America/Vancouver" },
                   companion: "group" },
-                { type: "transport", mode: "ferry", carrier: "BC Ferries", routeName: "Tsawwassen → Swartz Bay",
+                { type: "transport", mode: "ferry", carrier: "BC Ferries",
                   from: { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "09:00", tz: "America/Vancouver" },
                   to:   { name: "Swartz Bay", coord: [48.6886, -123.4108], time: "10:35", tz: "America/Vancouver" },
                   fare: { amount: 18, currency: "CAD" }, companion: "group",
@@ -2010,11 +2009,11 @@ const SAMPLE_ITN = {
                   purpose: "Explore the harbor area, free time",
                   companion: "friends",
                   notes: "Lots of street performers. Try asking someone to take a photo — in English." },
-                { type: "transport", mode: "ferry", carrier: "BC Ferries", routeName: "Swartz Bay → Tsawwassen",
+                { type: "transport", mode: "ferry", carrier: "BC Ferries",
                   from: { name: "Swartz Bay", coord: [48.6886, -123.4108], time: "18:00", tz: "America/Vancouver" },
                   to:   { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "19:35", tz: "America/Vancouver" },
                   companion: "group" },
-                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "Tsawwassen → Host area",
+                { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "19:50", tz: "America/Vancouver" },
                   to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "20:50", tz: "America/Vancouver" },
                   companion: "group" },
@@ -2028,7 +2027,7 @@ const SAMPLE_ITN = {
             events: [
                 { type: "free", label: "Farewell to host family", companion: "host",
                   notes: "Hand over a thank-you card. Last breakfast." },
-                { type: "transport", mode: "bus", carrier: "GPI Charter", routeName: "→ Vancouver Airport",
+                { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "Study Center", coord: [49.0846, -122.6017], time: "13:30", tz: "America/Vancouver" },
                   to:   { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "14:30", tz: "America/Vancouver" },
                   companion: "group" },
@@ -2460,16 +2459,26 @@ function renderEventCard(ev, evIdx, dayDate) {
     //   カード枠のコーナー発光 (::before/::after, --cat-color) が担う。
 
     // card-name の決定。
-    // v7.9: transport カードでは card-meta .leg に「FROM ▶▶ TO」が既に出るため、
-    //   card-name に同じ "from.name → to.name" を入れると完全な重複になる。
-    //   そこで transport の場合は「キャリア · 路線名」(例: "ANA · NH116",
-    //   "JR / Keikyu · → Haneda Airport T3") を card-name に表示。
-    //   このカード行に色のリズム(display フォントのタイトル)を残しつつ、
-    //   下の .leg と意味的に異なる情報を担わせる。
+    // v7.9.1: card-name の決定 (transport カード)。
+    //   routeName は本来「便名 (NH116)」または「運行種別 (Charter)」を入れる
+    //   スロットだが、過去のデータに "Swartz Bay → Tsawwassen" のような
+    //   ルート記述が紛れ込むことがあった。それを card-name に出すと、
+    //   その下の card-meta .leg (from.name ▶▶ to.name) と完全に被る。
+    //   将来データが入れ替わっても安全なよう、表示ロジックでガード:
+    //   routeName が "→" "▶" を含む、または from.name / to.name の
+    //   いずれかを部分文字列として含む場合、routeName を採用しない。
     let cardName;
     if (isTransport) {
         const carrier = ev.carrier || '';
-        const route = ev.routeName || '';
+        let route = ev.routeName || '';
+        const fromName = ev.from?.name || '';
+        const toName = ev.to?.name || '';
+        // ルート記述の検出: 矢印記号、または from/to 名を内包
+        const looksLikeRouteDesc =
+            /[→▶]/.test(route) ||
+            (fromName && route.includes(fromName)) ||
+            (toName && route.includes(toName));
+        if (looksLikeRouteDesc) route = '';
         cardName = [carrier, route].filter(Boolean).join(' · ') || (def.label || '—');
     } else {
         cardName = ev.name || ev.label || '—';
@@ -2515,14 +2524,11 @@ function renderEventCard(ev, evIdx, dayDate) {
     ` : '';
     const expandHint = hasDetails ? `<span class="expand-hint">DETAIL</span>` : '';
 
-    // v7.9 (項目3-b再調整): card-tag-cat を削除。
-    //   背景: v7.8 でカード左上に "▸ MEAL" を追加したが、六角形ネームプレート
-    //   (.hex-tag) が既に同じカテゴリラベルを表示しており、カテゴリ色も
-    //   六角形/カード枠コーナー(::before/::after)/cat-glow で既に効いているため、
-    //   情報重複が過剰だった。Less is more — 六角形ネームプレートを唯一の
-    //   カテゴリラベルに戻し、カードは「時刻+タイトル+詳細」だけに集中。
-    //   右上の番号バッジ (card-num-badge) は updateCardNumBadges() が
-    //   card 直下に挿入する。
+    // v7.9.1: 番号バッジを時刻と同じ行 (card-head 内) に配置する。
+    //   旧 v7.9 では右上 absolute だったが、ユーザー指摘で時刻と並列に「データ」
+    //   として扱う方が計器盤的に自然と判断。card-head は flex 行となり、
+    //   左に時刻、右に番号(updateCardNumBadges() が挿入)が並ぶ。
+    //   "21:00 → 22:00    02" のような表示で、視線が左→右に流れる。
     card.innerHTML = `
         <div class="card-head">
             ${timeHtml}
@@ -2941,28 +2947,26 @@ function shortenLabel(s) {
     return s.slice(0, 16) + '…';
 }
 
-// マップ描画後に呼ぶ:各カードの右上に「地図と同じ番号」のバッジを差し込む
-// v7.8 (項目3-b延長): 挿入先を card-head の先頭 → tl-card 直下に変更。
-//   バッジは CSS で position: absolute / top:6px / right:12px に固定され、
-//   本体 .card-tag.right (gold, 補助メタ情報) と同じ立ち位置を取る。
+// マップ描画後に呼ぶ:各カードの時刻の右隣に「地図と同じ番号」のバッジを差し込む
+// v7.9.1: 挿入先を card-head の末尾に変更 (時刻と同じ flex 行に並ぶ)。
+//   CSS .tl-card .card-head { display: flex; justify-content: space-between }
+//   により、時刻が左、番号が右に揃う計器盤的レイアウトに。
 function updateCardNumBadges() {
     document.querySelectorAll('.tl-item').forEach(item => {
         const idx = Number(item.dataset.eventIdx);
         const info = state.numByEventIdx.get(idx);
-        const card = item.querySelector('.tl-card');
-        if (!card) return;
-        // 既存のバッジを削除
-        const existing = card.querySelector('.card-num-badge');
+        const head = item.querySelector('.card-head');
+        if (!head) return;
+        // 既存のバッジを削除(再描画時の累積防止)
+        const existing = head.querySelector('.card-num-badge');
         if (existing) existing.remove();
         if (!info) return;
-        // v7.8: card 直下に追加 (右上絶対配置 — CSS .tl-card .card-num-badge 参照)。
-        //   v7.7 までの "[ NN ]" 角括弧装飾は廃止。本体 .card-tag.right は
-        //   記号なしで番号/座標を表示するため、語彙統一として裸の番号にする。
+        // card-head の末尾に追加 (時刻の右隣)。
         const b = document.createElement('span');
         b.className = 'card-num-badge';
         b.style.setProperty('--badge-color', info.color);
         b.textContent = String(info.num).padStart(2, '0');
-        card.appendChild(b);
+        head.appendChild(b);
     });
 }
 
