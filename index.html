@@ -975,7 +975,11 @@ body.has-fullscreen-map {
     margin-left: -8px; /* 六角形と重なる */
     margin-top: 7px;       /* アイテム間の空気感 */
     margin-bottom: 7px;
-    padding: 12px 14px 12px 22px; /* 左パディングは食い込みぶん広く */
+    /* v7.8 (項目3-b延長): padding-top を 12 → 24 に増加。
+       左上 .card-tag-cat と右上 .card-num-badge (どちらも top:6px) が
+       時刻 .card-time と重なるのを防ぐ。
+       左パディング 22px は六角形食い込みぶんで維持。 */
+    padding: 24px 14px 12px 22px;
     backdrop-filter: blur(6px);
     transition: all 0.2s;
     cursor: pointer;
@@ -1019,54 +1023,74 @@ body.has-fullscreen-map {
 
 /* カードヘッダー(時刻 + タイプラベル) */
 /*
-  カード上の地図番号バッジ (v7-step2 で再設計):
-  v6: 22px の小六角形 → 大六角形と視覚的に重複しすぎてうるさく、
-  しかも内部が暗くて数字が読みにくいフィードバックを受けた。
-  v7-step2: 計器盤UI伝統の "[ 01 ]" 角括弧スタイルに変更。
-  - 装飾を最小化、ノイズを増やさない
-  - 大六角形(カテゴリ)と完全に役割分離 — 形が違うので機能の違いが伝わる
-  - 計器盤・チェックリスト・ターミナル風UIに馴染む
-  - 色だけは地図マーカーと対応(同じ色で「これが地図のあれ」と分かる)
+  カード上の地図番号バッジ (v7.8 で再々設計):
+
+  履歴:
+  - v6: 22px の小六角形 → 大六角形と視覚的に重複、内部が暗くて数字が読みにくい。
+  - v7-step2: 計器盤UI伝統の "[ 01 ]" 角括弧スタイル、card-head の先頭に inline 配置。
+              番号と時刻が同列に並んでしまい、時刻の主役感を奪っていた。
+  - v7.8 (本版): 本体トップ .card パターンに完全準拠。
+                 番号は右上 absolute、角括弧装飾は廃止 (裸の "02")。
+                 本体 .card-tag.right (gold, 座標表示) と同じ語彙。
+
+  本体パターンとの対応:
+   - 本体: <span class="card-tag">▸ ORIGIN</span> (左, cyan, 主体識別)
+           <span class="card-tag right">35.6, 139.7</span> (右, gold, 補助メタ)
+   - 本版: <span class="card-tag-cat">▸ MEAL</span> (左, cyan系, カテゴリ)
+           <span class="card-num-badge">02</span> (右, gold弱, 地図対応番号)
 */
 .tl-card .card-num-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    position: absolute;
+    top: 6px;
+    right: 12px;
     font-family: var(--text-mono);
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 0.55rem;
+    font-weight: 500;
+    letter-spacing: 0.25em;
     line-height: 1;
-    color: var(--badge-color, var(--accent-cyan));
-    letter-spacing: 0.1em;
+    color: var(--badge-color, rgba(243, 156, 18, 0.55));
     background: transparent;
     border: 0;
     padding: 0;
-    margin-right: 8px;
-    flex-shrink: 0;
-    /* 角括弧は ::before / ::after で描く(テキストは番号だけにすることで
-       JS側の更新を変更せず使い回せる) */
-    position: relative;
+    margin: 0;
+    pointer-events: none;  /* カードクリック(地図pan)を妨げないため */
 }
-.tl-card .card-num-badge::before {
-    content: '[';
-    margin-right: 3px;
-    color: var(--badge-color, var(--accent-cyan));
-    opacity: 0.85;
-}
-.tl-card .card-num-badge::after {
-    content: ']';
-    margin-left: 3px;
-    color: var(--badge-color, var(--accent-cyan));
-    opacity: 0.85;
-}
+/* v7.7 までの [ NN ] 角括弧装飾は本体 .card-tag.right の語彙に揃えるため廃止。 */
+.tl-card .card-num-badge::before,
+.tl-card .card-num-badge::after { content: none; }
 .tl-card.no-map-num .card-num-badge { display: none; }
 
+/* v7.8 (項目3-b延長): カテゴリラベルを card-head の外に独立。左上 absolute、
+   本体 .card-tag (左, cyan系) と完全に同じ語彙。
+   --cat-color / --cat-glow は .cat-{name} クラスから流れてくる (1236行以降参照)。 */
+.tl-card .card-tag-cat {
+    position: absolute;
+    top: 6px;
+    left: 14px;            /* clip-path の左上 12px 切り欠きを避けて +2px 余裕 */
+    font-family: var(--text-mono);
+    font-size: 0.55rem;
+    font-weight: 500;
+    letter-spacing: 0.25em;
+    line-height: 1;
+    color: var(--cat-color, rgba(0, 242, 254, 0.6));
+    text-transform: uppercase;
+    text-shadow: 0 0 8px var(--cat-glow, transparent);
+    pointer-events: none;
+    /* 長文 (transport の "RAIL · JR / Keikyu · → Haneda Airport T3") が
+       右上の番号バッジと衝突しないよう、右側に余白を残す。
+       番号バッジは right:12px なので、左タグの右端は card 幅から
+       概ね 56px 以上の隙間を取る。 */
+    max-width: calc(100% - 56px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* v7.8 (項目3-b延長): card-head は時刻のみを含む単純なラッパーに。
+   旧設計では card-type / card-num-badge と横並びだったため flex/gap/wrap が必要だったが、
+   いずれも絶対配置に移ったので簡素化。 */
 .tl-card .card-head {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
     margin-bottom: 6px;
-    flex-wrap: wrap;
 }
 /* v7.7 改 (項目3-b): 時刻を主役に。理由は引き継ぎ書参照。
    - サイズアップ: 13px → 15px。本体トップの計器盤的タイポグラフィに準拠。
@@ -1094,14 +1118,8 @@ body.has-fullscreen-map {
     font-weight: 500;
     letter-spacing: 0.05em;
 }
-.tl-card .card-type {
-    font-family: var(--text-mono);
-    font-size: 9.5px;
-    letter-spacing: 0.22em;
-    color: var(--cat-color, var(--accent-cyan));
-    text-transform: uppercase;
-    text-shadow: 0 0 8px var(--cat-glow);
-}
+/* v7.8 (項目3-b延長): 旧 .card-type は .card-tag-cat に役割移譲、廃止。
+   card-head はもう「時刻のみ」を含む単純なラッパーになった。 */
 
 /* v7.7 改 (項目3-b): 行程名を脇役に。
    旧: 15px / weight 600 で時刻より目立っていた(情報階層の逆転)。
@@ -1683,7 +1701,22 @@ body.has-fullscreen-map {
     .tl-hex { width: 44px; height: 44px; }
     .tl-hex .icon { font-size: 17px; }
     .tl-hex-wrap .hex-tag { font-size: 7px; }
-    .tl-card { padding: 11px 12px 11px 18px; }
+    .tl-card {
+        /* v7.8 (項目3-b延長): モバイルでも左右タグ用に top パディング確保。 */
+        padding: 22px 12px 11px 18px;
+    }
+    /* v7.8: モバイル時はタグを少し詰めて、狭い幅でも時刻のスペースを確保 */
+    .tl-card .card-tag-cat {
+        top: 5px;
+        left: 12px;
+        font-size: 0.5rem;
+        max-width: calc(100% - 50px);
+    }
+    .tl-card .card-num-badge {
+        top: 5px;
+        right: 10px;
+        font-size: 0.5rem;
+    }
     /* v7.7 改 (項目3-b): モバイルでも情報階層を保つ。
        時刻 (15px → モバイル14px) と行程名 (13px → モバイル12.5px) の
        関係を維持。 */
@@ -2505,10 +2538,17 @@ function renderEventCard(ev, evIdx, dayDate) {
     ` : '';
     const expandHint = hasDetails ? `<span class="expand-hint">DETAIL</span>` : '';
 
+    // v7.8 (項目3-b延長): カード構造を本体パターン(左タグ=主体識別 / 右タグ=補助メタ)に準拠。
+    //   - 旧: card-head 内に [num][time][card-type] が横並び → 番号と時刻が同列で目立ち、
+    //         タイトルとカテゴリの主従が曖昧だった。
+    //   - 新: 左上 absolute = カテゴリ(card-tag-cat / cyan系)、右上 absolute = 番号(updateCardNumBadges
+    //         が後から挿入、gold系)。card-head は時刻のみとなり、時刻が唯一の「大きな情報」=主役に。
+    //   - 本体 .card-tag (cyan, 左) / .card-tag.right (gold, 右) と完全に同じ語彙。
     card.innerHTML = `
+        <span class="card-tag-cat">▸ ${escapeHtml(typeLabel)}</span>
+        <!-- 右上の番号バッジは updateCardNumBadges() が card 直下に挿入する -->
         <div class="card-head">
             ${timeHtml}
-            <span class="card-type">${escapeHtml(typeLabel)}</span>
         </div>
         <div class="card-name">${escapeHtml(cardName)}</div>
         ${metaHtml}
@@ -2924,25 +2964,28 @@ function shortenLabel(s) {
     return s.slice(0, 16) + '…';
 }
 
-// マップ描画後に呼ぶ:各カードの先頭に「地図と同じ番号」のバッジを差し込む
+// マップ描画後に呼ぶ:各カードの右上に「地図と同じ番号」のバッジを差し込む
+// v7.8 (項目3-b延長): 挿入先を card-head の先頭 → tl-card 直下に変更。
+//   バッジは CSS で position: absolute / top:6px / right:12px に固定され、
+//   本体 .card-tag.right (gold, 補助メタ情報) と同じ立ち位置を取る。
 function updateCardNumBadges() {
     document.querySelectorAll('.tl-item').forEach(item => {
         const idx = Number(item.dataset.eventIdx);
         const info = state.numByEventIdx.get(idx);
-        const head = item.querySelector('.card-head');
-        if (!head) return;
+        const card = item.querySelector('.tl-card');
+        if (!card) return;
         // 既存のバッジを削除
-        const existing = head.querySelector('.card-num-badge');
+        const existing = card.querySelector('.card-num-badge');
         if (existing) existing.remove();
         if (!info) return;
-        // 先頭に新規バッジを挿入。
-        // v7-step2: 角括弧 [ NN ] スタイル。 番号は2桁ゼロパディングで揃える。
-        // 角括弧自体は CSS の ::before/::after で描く。
+        // v7.8: card 直下に追加 (右上絶対配置 — CSS .tl-card .card-num-badge 参照)。
+        //   v7.7 までの "[ NN ]" 角括弧装飾は廃止。本体 .card-tag.right は
+        //   記号なしで番号/座標を表示するため、語彙統一として裸の番号にする。
         const b = document.createElement('span');
         b.className = 'card-num-badge';
         b.style.setProperty('--badge-color', info.color);
         b.textContent = String(info.num).padStart(2, '0');
-        head.insertBefore(b, head.firstChild);
+        card.appendChild(b);
     });
 }
 
