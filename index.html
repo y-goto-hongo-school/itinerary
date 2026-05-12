@@ -283,11 +283,16 @@ body::after {
   タイル自体が既に「黒背景 + 明るい線・地名」のダークデザインなので、
   そのまま表示するだけで高コントラストになる。
   v6 では filter: invert(1) hue-rotate(180deg)... を当てていたが廃止。
+
+  v7-step2: 実機で「暗すぎる、Google Maps Dark レベルが欲しい」とフィードバック。
+  Dark Matter は元々控えめなコントラストなので、brightness と contrast を底上げ。
+  - brightness(1.5): 道路・地名の白要素を強く浮かび上がらせる
+  - contrast(1.25): 背景の黒との分離を強化、メリハリを出す
+  - hue-rotate(-8deg): わずかにcyan寄りに、世界観の cyan 計器盤と統一
+  - saturate(0.92): 強い原色(公園の濃緑など)を抑える
 */
 .leaflet-tile-pane {
-    /* タイル自体に小さなcyan寄りの色相シフトだけ加えて世界観を統一。
-       saturate を少し下げて派手すぎる原色を抑える。 */
-    filter: hue-rotate(-8deg) saturate(0.92);
+    filter: brightness(1.5) contrast(1.25) hue-rotate(-8deg) saturate(0.92);
 }
 /* マーカーや線は filter の影響を受けないよう除外 */
 .leaflet-marker-pane,
@@ -375,6 +380,55 @@ body::after {
     box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
 }
 .map-controls button:active { transform: scale(0.95); }
+
+/*
+  全画面モード (v7-step2 追加)
+  Fullscreen API が使えない/拒否された場合のフォールバックとして
+  ページ内擬似全画面(position:fixed で画面を覆う)も用意。
+  どちらの方式でも、地図ボタン以外のページUIは見えなくなる。
+*/
+.map-section.is-fullscreen,
+.map-section:fullscreen,
+.map-section:-webkit-full-screen {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important; left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    z-index: 9999 !important;
+    border-radius: 0 !important;
+    background: var(--bg-deep) !important;
+}
+/* 全画面中、map-svg-wrap も画面いっぱいに広がるよう調整 */
+.map-section.is-fullscreen .map-svg-wrap,
+.map-section:fullscreen .map-svg-wrap,
+.map-section:-webkit-full-screen .map-svg-wrap {
+    height: 100% !important;
+    max-height: none !important;
+}
+/* 全画面中のボタンアイコンは "縮小" を示す */
+.map-section.is-fullscreen #map-fullscreen::before,
+.map-section:fullscreen #map-fullscreen::before {
+    content: '⤧';
+}
+.map-section.is-fullscreen #map-fullscreen,
+.map-section:fullscreen #map-fullscreen {
+    font-size: 0; /* 元の⛶を消して::beforeの⤧だけ表示 */
+}
+.map-section.is-fullscreen #map-fullscreen::before,
+.map-section:fullscreen #map-fullscreen::before {
+    font-size: 14px;
+    display: inline-block;
+    line-height: 1;
+}
+/* 全画面中はBodyのスクロールを止める(背景がチラ見えしないように) */
+body.has-fullscreen-map {
+    overflow: hidden;
+}
 
 /* Leafletの標準コントロール(zoom)を非表示にして自前と統一 */
 .leaflet-control-zoom { display: none !important; }
@@ -744,22 +798,31 @@ body::after {
     opacity: 0;
 }
 @keyframes pulse-flow {
+    /*
+      v7-step2: アイテム間の margin 境界(14px)でパルスが重なって
+      過剰に明るくなる問題を解消。
+      - 開始位置を六角形のすぐ下から
+      - 終端をアイテムの 100% きっかりに(margin領域を走らない)
+      - 終端で完全に消えて、次のアイテムのパルスが自然に引き継ぐ
+    */
     0%   { top: calc(50% + 25px); opacity: 0; }
     15%  { opacity: 1; }
-    85%  { opacity: 1; }
-    100% { top: calc(100% + 7px); opacity: 0; }   /* margin-bottom 7px ぶん下まで伸ばす */
+    80%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
 }
 /* 最後のアイテムにはパルス不要 */
 .tl-item:last-child .tl-pulse { display: none; }
 
-/* アイテムごとにアニメの開始位相をずらして、複数のパルスが連続して流れる演出 */
+/* アイテムごとにアニメの開始位相をずらして、複数のパルスが連続して流れる演出。
+   v7-step2: 隣接アイテム間でパルスが同時刻に同じ位置に来てチカチカするのを
+   防ぐため、delay 間隔を 0.3s → 0.6s に広げる(2.4s周期に対して1/4ずつずらす)。 */
 .tl-item:nth-child(1) .tl-pulse { animation-delay: 0s; }
-.tl-item:nth-child(2) .tl-pulse { animation-delay: 0.3s; }
-.tl-item:nth-child(3) .tl-pulse { animation-delay: 0.6s; }
-.tl-item:nth-child(4) .tl-pulse { animation-delay: 0.9s; }
-.tl-item:nth-child(5) .tl-pulse { animation-delay: 1.2s; }
-.tl-item:nth-child(6) .tl-pulse { animation-delay: 1.5s; }
-.tl-item:nth-child(7) .tl-pulse { animation-delay: 1.8s; }
+.tl-item:nth-child(2) .tl-pulse { animation-delay: 0.6s; }
+.tl-item:nth-child(3) .tl-pulse { animation-delay: 1.2s; }
+.tl-item:nth-child(4) .tl-pulse { animation-delay: 1.8s; }
+.tl-item:nth-child(5) .tl-pulse { animation-delay: 0.3s; }
+.tl-item:nth-child(6) .tl-pulse { animation-delay: 0.9s; }
+.tl-item:nth-child(7) .tl-pulse { animation-delay: 1.5s; }
 .tl-item:nth-child(8) .tl-pulse { animation-delay: 2.1s; }
 
 .tl-item {
@@ -824,15 +887,18 @@ body::after {
     filter: drop-shadow(0 0 6px var(--cat-glow, rgba(0, 242, 254, 0.5)));
 }
 /*
-  ネームプレート v6 final:
+  ネームプレート v7-step2:
   - 六角形の下半分に長方形プレート
   - アイコンは上に寄せたので干渉しない
   - hex-wrap の絶対座標で「六角形中心の少し下」に配置
   - 六角形の clip-path で切られないよう、hex の兄弟として hex-wrap 内に配置
+  - v7-step2: ユーザー要望「プレート縦長の半分ぶん下に下げて」を反映。
+    プレート高さ ≈ 12px(font 8px + padding 上下 2px×2)→ 半分 = 6px。
+    v6 の +3px から +9px に変更。
 */
 .tl-hex-wrap .hex-tag {
     position: absolute;
-    top: calc(50% + 3px);          /* 六角形の中心から少し下 */
+    top: calc(50% + 9px);          /* 六角形の中心から下半分の中央付近 */
     left: 50%;
     transform: translate(-50%, 0);
     font-family: var(--text-mono);
@@ -902,35 +968,45 @@ body::after {
 
 /* カードヘッダー(時刻 + タイプラベル) */
 /*
-  カード上の地図番号バッジ:
-  地図マーカーと同じ色・同じ番号の小さな六角形。
-  地図とカードの対応関係を一目で示す。
+  カード上の地図番号バッジ (v7-step2 で再設計):
+  v6: 22px の小六角形 → 大六角形と視覚的に重複しすぎてうるさく、
+  しかも内部が暗くて数字が読みにくいフィードバックを受けた。
+  v7-step2: 計器盤UI伝統の "[ 01 ]" 角括弧スタイルに変更。
+  - 装飾を最小化、ノイズを増やさない
+  - 大六角形(カテゴリ)と完全に役割分離 — 形が違うので機能の違いが伝わる
+  - 計器盤・チェックリスト・ターミナル風UIに馴染む
+  - 色だけは地図マーカーと対応(同じ色で「これが地図のあれ」と分かる)
 */
 .tl-card .card-num-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px; height: 22px;
-    font-family: var(--text-display);
+    font-family: var(--text-mono);
     font-size: 11px;
     font-weight: 700;
     line-height: 1;
     color: var(--badge-color, var(--accent-cyan));
-    background: var(--bg-deep);
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    letter-spacing: 0.1em;
+    background: transparent;
     border: 0;
-    position: relative;
+    padding: 0;
     margin-right: 8px;
     flex-shrink: 0;
-    /* 縁を表現するため、外側に色付き矩形を重ねる */
+    /* 角括弧は ::before / ::after で描く(テキストは番号だけにすることで
+       JS側の更新を変更せず使い回せる) */
+    position: relative;
 }
 .tl-card .card-num-badge::before {
-    content: '';
-    position: absolute;
-    inset: -1.5px;
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    background: var(--badge-color, var(--accent-cyan));
-    z-index: -1;
+    content: '[';
+    margin-right: 3px;
+    color: var(--badge-color, var(--accent-cyan));
+    opacity: 0.85;
+}
+.tl-card .card-num-badge::after {
+    content: ']';
+    margin-left: 3px;
+    color: var(--badge-color, var(--accent-cyan));
+    opacity: 0.85;
 }
 .tl-card.no-map-num .card-num-badge { display: none; }
 
@@ -1339,10 +1415,17 @@ body::after {
       - 100dvh は動的ビューポート単位で、アドレスバー表示・非表示で変化する
       - 地図高さは min(60vw, 60dvh) — 横長なら横幅基準、縦長なら高さ基準
         どちらでも「画面の半分強」を超えないように
+
+      v7-step2 修正: アドレスバーで地図上端が見切れる問題。
+      - top: 0 では Android Chrome のアドレスバーが出てきた時に隠れる
+      - 8px 程度の余白を確保し、env(safe-area-inset-top) も加算して
+        iOS Safari のノッチ/ダイナミックアイランドにも対応
+      - 上に「黒い帯」が見えることで、地図がアドレスバーから「浮いている」
+        印象になり、計器盤UI の額縁効果としても自然
     */
     .map-section {
         position: sticky;
-        top: 0;
+        top: calc(8px + env(safe-area-inset-top, 0px));
         z-index: 50;
         margin-bottom: 14px;
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6),
@@ -1388,6 +1471,7 @@ body::after {
             <button id="map-zoom-in"  title="Zoom in">+</button>
             <button id="map-zoom-out" title="Zoom out">−</button>
             <button id="map-reset"    title="Reset view" style="font-size: 10px;">⟳</button>
+            <button id="map-fullscreen" title="Toggle fullscreen" style="font-size: 14px;">⛶</button>
         </div>
         <div class="map-svg-wrap">
             <div id="leaflet-map"></div>
@@ -2345,11 +2429,13 @@ function updateCardNumBadges() {
         const existing = head.querySelector('.card-num-badge');
         if (existing) existing.remove();
         if (!info) return;
-        // 先頭に新規バッジを挿入
+        // 先頭に新規バッジを挿入。
+        // v7-step2: 角括弧 [ NN ] スタイル。 番号は2桁ゼロパディングで揃える。
+        // 角括弧自体は CSS の ::before/::after で描く。
         const b = document.createElement('span');
         b.className = 'card-num-badge';
         b.style.setProperty('--badge-color', info.color);
-        b.textContent = info.num;
+        b.textContent = String(info.num).padStart(2, '0');
         head.insertBefore(b, head.firstChild);
     });
 }
@@ -2382,6 +2468,93 @@ function mapZoomBy(delta) {
 function mapResetView() {
     drawMap();   // 現在の日のbboxにfit直し
 }
+
+/*
+  地図を全画面表示する/戻す (v7-step2 追加)
+  方針:
+  - まずネイティブの Fullscreen API を試みる(対応ブラウザはOSレベルの全画面に)
+  - 拒否されたり未対応の場合は、CSSクラス(.is-fullscreen)による
+    擬似全画面(position:fixed で画面いっぱい)にフォールバック
+  - ESCキーは Fullscreen API のネイティブ動作 / フォールバック側は手動でlistenする
+  - 全画面切り替え後は Leaflet に invalidateSize() を伝えてサイズ再計算
+*/
+let __fullscreenFallback = false;
+function mapToggleFullscreen() {
+    const section = document.getElementById('map-section');
+    if (!section) return;
+
+    const isFs = section.classList.contains('is-fullscreen') ||
+                 document.fullscreenElement === section ||
+                 document.webkitFullscreenElement === section;
+
+    if (isFs) {
+        // 戻す
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitFullscreenElement) {
+            document.webkitExitFullscreen();
+        }
+        // フォールバックモードを解除
+        section.classList.remove('is-fullscreen');
+        document.body.classList.remove('has-fullscreen-map');
+        __fullscreenFallback = false;
+    } else {
+        // 全画面化:まずネイティブAPIを試みる
+        const req = section.requestFullscreen ||
+                    section.webkitRequestFullscreen;
+        if (req) {
+            try {
+                const p = req.call(section);
+                if (p && typeof p.then === 'function') {
+                    p.then(() => {
+                        // ネイティブ全画面成功:invalidateSizeで再計算
+                        setTimeout(() => __leafletMap?.invalidateSize(), 100);
+                    }).catch(() => {
+                        // 拒否された場合はフォールバック
+                        section.classList.add('is-fullscreen');
+                        document.body.classList.add('has-fullscreen-map');
+                        __fullscreenFallback = true;
+                        setTimeout(() => __leafletMap?.invalidateSize(), 100);
+                    });
+                } else {
+                    // 古いブラウザ(同期返却):成功扱い
+                    setTimeout(() => __leafletMap?.invalidateSize(), 100);
+                }
+            } catch (e) {
+                // 例外:フォールバック
+                section.classList.add('is-fullscreen');
+                document.body.classList.add('has-fullscreen-map');
+                __fullscreenFallback = true;
+                setTimeout(() => __leafletMap?.invalidateSize(), 100);
+            }
+        } else {
+            // Fullscreen API 未対応:フォールバック
+            section.classList.add('is-fullscreen');
+            document.body.classList.add('has-fullscreen-map');
+            __fullscreenFallback = true;
+            setTimeout(() => __leafletMap?.invalidateSize(), 100);
+        }
+    }
+}
+
+/*
+  ネイティブ全画面の終了イベントをハンドル
+  ユーザーが ESC を押した時、Body のクラスとマップサイズを正しく戻す。
+*/
+function __onFullscreenChange() {
+    const section = document.getElementById('map-section');
+    if (!section) return;
+    const stillFs = document.fullscreenElement === section ||
+                    document.webkitFullscreenElement === section;
+    if (!stillFs && !__fullscreenFallback) {
+        // 全画面から抜けた(ネイティブ→通常)
+        section.classList.remove('is-fullscreen');
+        document.body.classList.remove('has-fullscreen-map');
+        setTimeout(() => __leafletMap?.invalidateSize(), 100);
+    }
+}
+document.addEventListener('fullscreenchange', __onFullscreenChange);
+document.addEventListener('webkitfullscreenchange', __onFullscreenChange);
 
 // ──────────────── アクション ────────────────
 function exportItn() {
@@ -2456,6 +2629,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#map-zoom-in').addEventListener('click', () => mapZoomBy(1));
     $('#map-zoom-out').addEventListener('click', () => mapZoomBy(-1));
     $('#map-reset').addEventListener('click', mapResetView);
+    $('#map-fullscreen').addEventListener('click', mapToggleFullscreen);
 
     $('#file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -2480,7 +2654,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // ESC でクローズ・モーダル外タップでクローズ(STEP 1でも体験させる)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            // confirm優先
+            // 1. フォールバック全画面中なら、まずそれを抜ける(クローズより優先)
+            //    ネイティブ全画面はブラウザが勝手にESC処理するのでここには来ない
+            if (__fullscreenFallback) {
+                mapToggleFullscreen();
+                return;
+            }
+            // 2. confirm優先
             if ($('#confirm-overlay').classList.contains('active')) {
                 $('#confirm-overlay').classList.remove('active');
                 return;
