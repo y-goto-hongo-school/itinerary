@@ -456,6 +456,137 @@ body.has-fullscreen-map {
 }
 .leaflet-container { background: #050a16; }
 
+/* ──────────── v7.9.3: 現在地表示機能 (Geolocation) ──────────── */
+
+/* 追跡 ON/OFF ボタン (◎) の状態演出 */
+.map-controls #map-locate-toggle.is-requesting {
+    /* 許可リクエスト中: スピン + 明滅 (まだ未確定) */
+    color: var(--accent-cyan);
+    animation: locate-spin 0.9s linear infinite, locate-pulse-cyan 1.4s ease-in-out infinite;
+}
+.map-controls #map-locate-toggle.is-tracking {
+    /* 追跡中: 緑で点灯。脈動で「動作中」を示す */
+    color: #34d399;             /* emerald-400 */
+    border-color: rgba(52, 211, 153, 0.55);
+    animation: locate-pulse-green 2.4s ease-in-out infinite;
+}
+.map-controls #map-locate-toggle.is-tracking:hover {
+    background: rgba(52, 211, 153, 0.18);
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.5);
+}
+.map-controls #map-locate-toggle.is-error {
+    /* エラー状態: 赤で短時間明滅後、固定表示。再タップで再試行可能 */
+    color: #f87171;             /* red-400 */
+    border-color: rgba(248, 113, 113, 0.55);
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.35);
+}
+
+/* 現在地へセンターボタン (⌖) — 追跡 ON のときだけ有効 */
+.map-controls #map-locate-center:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+.map-controls #map-locate-center:not(:disabled) {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.45);
+}
+.map-controls #map-locate-center:not(:disabled):hover {
+    background: rgba(52, 211, 153, 0.18);
+    box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+}
+
+@keyframes locate-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+@keyframes locate-pulse-cyan {
+    0%, 100% { box-shadow: 0 0 6px rgba(0, 242, 254, 0.3); }
+    50%      { box-shadow: 0 0 14px rgba(0, 242, 254, 0.7); }
+}
+@keyframes locate-pulse-green {
+    0%, 100% { box-shadow: 0 0 6px rgba(52, 211, 153, 0.25); }
+    50%      { box-shadow: 0 0 12px rgba(52, 211, 153, 0.55); }
+}
+
+/* 現在地マーカー (Leaflet divIcon 内部の独自要素)。
+   既存の .itn-marker (橙の六角形) との色差で「自分」と「行程」を区別。
+   - 外側: 大きな脈動リング (装飾)
+   - 内側: 小六角形コア (位置を示す主役) */
+.geo-marker {
+    position: relative;
+    width: 28px; height: 28px;
+}
+.geo-marker .geo-core {
+    position: absolute;
+    inset: 8px;        /* 12px × 12px の中央コア */
+    background: #3b82f6;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.85);
+    z-index: 2;
+}
+.geo-marker .geo-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(59, 130, 246, 0.18);
+    box-shadow:
+        inset 0 0 0 1px rgba(59, 130, 246, 0.5),
+        0 0 14px rgba(59, 130, 246, 0.4);
+    animation: geo-ring-pulse 2.2s ease-in-out infinite;
+    z-index: 1;
+}
+@keyframes geo-ring-pulse {
+    0%, 100% { transform: scale(1);    opacity: 0.7; }
+    50%      { transform: scale(1.35); opacity: 0.35; }
+}
+
+/* 精度リング — Leaflet の L.circle で実描画される(物理メートル半径)。
+   path 要素のスタイルは Leaflet オプションで直接指定するため、CSS では fallback のみ。 */
+.leaflet-interactive.geo-accuracy {
+    stroke: rgba(59, 130, 246, 0.5);
+    stroke-width: 1;
+    fill: rgba(59, 130, 246, 0.08);
+}
+
+/* 現在地情報トースト — 取得成功/エラー時に短時間表示 */
+.geo-toast {
+    position: absolute;
+    bottom: 50px;       /* attribution と zoom-info の上 */
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 14, 28, 0.92);
+    border: 1px solid rgba(52, 211, 153, 0.5);
+    color: rgba(52, 211, 153, 0.95);
+    font-family: var(--text-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    padding: 6px 14px;
+    text-transform: uppercase;
+    z-index: 700;
+    pointer-events: none;
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+    white-space: nowrap;
+    animation: geo-toast-in 0.3s ease-out;
+}
+.geo-toast.is-error {
+    border-color: rgba(248, 113, 113, 0.55);
+    color: rgba(248, 113, 113, 0.95);
+    box-shadow: 0 0 12px rgba(248, 113, 113, 0.4);
+}
+.geo-toast.is-hiding {
+    animation: geo-toast-out 0.4s ease-in forwards;
+}
+@keyframes geo-toast-in {
+    from { opacity: 0; transform: translate(-50%, 8px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes geo-toast-out {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to   { opacity: 0; transform: translate(-50%, -6px); }
+}
+
+/* ──────────── v7.9.3 ここまで ──────────── */
+
 .corner {
     position: absolute;
     width: 14px; height: 14px;
@@ -1704,6 +1835,10 @@ body.has-fullscreen-map {
     .tl-card .card-time .end { font-size: 14px; }
     .tl-card .card-name { font-size: 12.5px; }
     .map-controls button { width: 28px; height: 28px; font-size: 13px; }
+    /* v7.9.3: ◎ ⌖ は inline style で font-size: 16px を指定しているが、
+       モバイルでは 14px に抑えてコンパクト化。 */
+    .map-controls #map-locate-toggle,
+    .map-controls #map-locate-center { font-size: 14px !important; }
 
     /* v7-step3: 連続spineに伴い、モバイルでも spine / .tl-pulse の
        x座標を再計算。tl-hex-wrap が 50px → 中心 25px、 padding-left 4px →
@@ -1800,6 +1935,11 @@ body.has-fullscreen-map {
             <button id="map-zoom-in"  title="Zoom in">+</button>
             <button id="map-zoom-out" title="Zoom out">−</button>
             <button id="map-reset"    title="Reset view" style="font-size: 10px;">⟳</button>
+            <!-- v7.9.3: 現在地表示機能 (Geolocation watchPosition)。
+                 ◎ = 追跡 ON/OFF トグル (緑点灯=ON, 消灯=OFF, 赤点滅=エラー)
+                 ⌖ = 現在地へセンター pan (追跡ON時のみ有効、OFF時は dim) -->
+            <button id="map-locate-toggle" title="Toggle location tracking" style="font-size: 16px;">◎</button>
+            <button id="map-locate-center" title="Center on my location" style="font-size: 16px;" disabled>⌖</button>
             <button id="map-fullscreen" title="Toggle fullscreen" style="font-size: 14px;">⛶</button>
         </div>
         <div class="map-svg-wrap">
@@ -2650,6 +2790,156 @@ let __markerLayer = null;
 let __lineLayer = null;
 let __markerByEventIdx = new Map();   // eventIdx → {marker, leg}  (legは transport の場合 'from'|'to')
 
+// ──────────────── v7.9.3: Geolocation (現在地追跡) ────────────────
+//
+// 設計方針:
+//   - navigator.geolocation.watchPosition で省電力な「変化通知」型追跡
+//   - 初回成功時のみ地図を pan、以降のマーカー更新では地図を動かさない
+//     (ユーザーの地図操作を邪魔しないため)
+//   - 別ボタン⌖で任意のタイミングでマーカーへ pan できる
+//   - エラー(拒否/タイムアウト)はトーストで通知、ボタンは赤化
+//   - HTTPS でないと動かないが、本サイトは GitHub Pages なので OK
+//
+let __geoWatchId = null;       // watchPosition の ID。null = 追跡停止中
+let __geoMarker = null;        // L.marker (青の脈動コア)
+let __geoAccCircle = null;     // L.circle (物理メートル半径の精度円)
+let __geoFirstFix = true;      // 初回 fix で地図を pan するためのフラグ
+
+function geoToast(message, isError = false, duration = 3000) {
+    // 既存のトーストがあれば消す
+    document.querySelectorAll('.geo-toast').forEach(t => t.remove());
+    const ms = document.getElementById('map-section');
+    if (!ms) return;
+    const t = document.createElement('div');
+    t.className = 'geo-toast' + (isError ? ' is-error' : '');
+    t.textContent = message;
+    ms.appendChild(t);
+    setTimeout(() => {
+        t.classList.add('is-hiding');
+        setTimeout(() => t.remove(), 400);
+    }, duration);
+}
+
+function setGeoButtonState(state) {
+    // state: 'off' | 'requesting' | 'tracking' | 'error'
+    const btnToggle = document.getElementById('map-locate-toggle');
+    const btnCenter = document.getElementById('map-locate-center');
+    if (!btnToggle || !btnCenter) return;
+    btnToggle.classList.remove('is-requesting', 'is-tracking', 'is-error');
+    if (state === 'requesting') btnToggle.classList.add('is-requesting');
+    else if (state === 'tracking') btnToggle.classList.add('is-tracking');
+    else if (state === 'error') btnToggle.classList.add('is-error');
+    // センターボタンは追跡中のみ有効
+    btnCenter.disabled = (state !== 'tracking');
+}
+
+function startGeoTracking() {
+    if (!('geolocation' in navigator)) {
+        geoToast('Geolocation not supported', true);
+        setGeoButtonState('error');
+        return;
+    }
+    const map = ensureLeafletMap();
+    if (!map) return;
+    setGeoButtonState('requesting');
+    __geoFirstFix = true;
+    // enableHighAccuracy: 迷子用途では GPS 精度が必要なため true。
+    // バッテリー消費は増えるが、ON/OFF をユーザーが制御するので問題なし。
+    // maximumAge: 0 = キャッシュを使わず常に新しい値を取る
+    // timeout: 15秒以内に応答なければエラー
+    __geoWatchId = navigator.geolocation.watchPosition(
+        onGeoPosition,
+        onGeoError,
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+}
+
+function stopGeoTracking() {
+    if (__geoWatchId !== null) {
+        navigator.geolocation.clearWatch(__geoWatchId);
+        __geoWatchId = null;
+    }
+    if (__geoMarker && __leafletMap) {
+        __leafletMap.removeLayer(__geoMarker);
+        __geoMarker = null;
+    }
+    if (__geoAccCircle && __leafletMap) {
+        __leafletMap.removeLayer(__geoAccCircle);
+        __geoAccCircle = null;
+    }
+    setGeoButtonState('off');
+}
+
+function onGeoPosition(pos) {
+    const { latitude, longitude, accuracy } = pos.coords;
+    if (!__leafletMap) return;
+    setGeoButtonState('tracking');
+    const latlng = [latitude, longitude];
+
+    // マーカー本体(青の脈動六角形)
+    if (!__geoMarker) {
+        const icon = L.divIcon({
+            className: 'geo-marker-wrap',
+            html: '<div class="geo-marker"><div class="geo-ring"></div><div class="geo-core"></div></div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+        });
+        __geoMarker = L.marker(latlng, { icon, interactive: false }).addTo(__leafletMap);
+    } else {
+        __geoMarker.setLatLng(latlng);
+    }
+
+    // 精度円(物理メートル半径)
+    if (!__geoAccCircle) {
+        __geoAccCircle = L.circle(latlng, {
+            radius: accuracy,
+            color: 'rgba(59, 130, 246, 0.5)',
+            weight: 1,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.08,
+            interactive: false,
+            className: 'geo-accuracy'
+        }).addTo(__leafletMap);
+    } else {
+        __geoAccCircle.setLatLng(latlng);
+        __geoAccCircle.setRadius(accuracy);
+    }
+
+    // 初回 fix のみ地図を pan + zoom。以降はマーカーが動くだけ。
+    if (__geoFirstFix) {
+        __geoFirstFix = false;
+        // 精度に応じてズーム調整: 精度が良いほど寄る
+        const targetZoom = accuracy < 50 ? 16 : (accuracy < 500 ? 14 : 12);
+        const currentZoom = __leafletMap.getZoom();
+        __leafletMap.setView(latlng, Math.max(currentZoom, targetZoom), { animate: true });
+        // 成功トースト
+        const accStr = accuracy < 1000 ? `±${Math.round(accuracy)}m` : `±${(accuracy / 1000).toFixed(1)}km`;
+        geoToast(`Position acquired · ${accStr}`, false, 3000);
+    }
+}
+
+function onGeoError(err) {
+    // PERMISSION_DENIED = 1, POSITION_UNAVAILABLE = 2, TIMEOUT = 3
+    let msg;
+    if (err.code === 1)      msg = 'Permission denied';
+    else if (err.code === 2) msg = 'Position unavailable';
+    else if (err.code === 3) msg = 'Request timed out';
+    else                     msg = 'Location error';
+    geoToast(msg, true, 4000);
+    // 拒否されたら追跡停止(再試行可能のため watchId はクリア)
+    if (__geoWatchId !== null) {
+        navigator.geolocation.clearWatch(__geoWatchId);
+        __geoWatchId = null;
+    }
+    setGeoButtonState('error');
+}
+
+function centerOnGeoLocation() {
+    if (!__geoMarker || !__leafletMap) return;
+    const ll = __geoMarker.getLatLng();
+    __leafletMap.panTo(ll, { animate: true, duration: 0.5 });
+}
+
 // 移動手段別の色(マーカーと線の両方で使用)
 function modeColor(mode) {
     const m = {
@@ -3205,6 +3495,19 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#map-zoom-out').addEventListener('click', () => mapZoomBy(-1));
     $('#map-reset').addEventListener('click', mapResetView);
     $('#map-fullscreen').addEventListener('click', mapToggleFullscreen);
+
+    // v7.9.3: Geolocation 機能のボタン接続
+    // ◎ トグル: OFF → ON (watchPosition 開始) / ON → OFF (停止 + マーカー削除)
+    //   error 状態でタップした場合は再試行(=新規 start)
+    $('#map-locate-toggle').addEventListener('click', () => {
+        if (__geoWatchId !== null) {
+            stopGeoTracking();
+        } else {
+            startGeoTracking();
+        }
+    });
+    // ⌖ センター: 現在地マーカーへ pan (追跡 OFF 時は disabled なので呼ばれない)
+    $('#map-locate-center').addEventListener('click', centerOnGeoLocation);
 
     $('#file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
