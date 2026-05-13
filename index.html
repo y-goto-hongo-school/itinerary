@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard v7.9.6</title>
+<title>ITINERARY — Premium Travel Dashboard v7.9.7</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -575,10 +575,13 @@ body.has-fullscreen-map {
     width: 56px; height: 56px;
     transform: translate(-50%, -50%) rotate(0deg);
     transform-origin: center;
-    /* 北 (-30度 から +30度) を青で塗る扇形。
-       transform: rotate で実際の方角に向ける。 */
+    /* v7.9.7: ビームを「向いている方向」に開いた扇形にする。
+       conic-gradient の角度起点はブラウザ実装により from -30deg では
+       下向き(=南)に開いてしまう問題があったため、from 150deg(180度反転)
+       に修正。これで rotate(0deg) のとき扇形が真上(=北)を指す。
+       30度開きの扇形(以前は60度。広すぎたので方角の指向性を強める)。 */
     background: conic-gradient(
-        from -30deg,
+        from 150deg,
         rgba(59, 130, 246, 0.45) 0deg,
         rgba(59, 130, 246, 0.15) 30deg,
         transparent 60deg,
@@ -2091,6 +2094,7 @@ body.has-fullscreen-map {
             <div class="geo-debug-title">▸ GEO DEBUG</div>
             <div class="geo-debug-row"><span class="geo-debug-key">raw</span><span class="geo-debug-val" id="gdo-raw">—</span></div>
             <div class="geo-debug-row"><span class="geo-debug-key">shown</span><span class="geo-debug-val" id="gdo-shown">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">accum</span><span class="geo-debug-val" id="gdo-accum">—</span></div>
             <div class="geo-debug-divider"></div>
             <div class="geo-debug-row"><span class="geo-debug-key">alpha</span><span class="geo-debug-val" id="gdo-alpha">—</span></div>
             <div class="geo-debug-row"><span class="geo-debug-key">absolute</span><span class="geo-debug-val" id="gdo-absolute">—</span></div>
@@ -2959,7 +2963,8 @@ let __geoMarker = null;        // L.marker (青の脈動コア)
 let __geoAccCircle = null;     // L.circle (物理メートル半径の精度円)
 let __geoFirstFix = true;      // 初回 fix で地図を pan するためのフラグ
 let __geoHeading = null;       // 現在の生方角(度、北=0、東=90)。null = 取得できない
-let __geoHeadingSmoothed = null; // v7.9.4: ローパスフィルタ済み方角(ビーム表示はこちらを使う)
+let __geoHeadingSmoothed = null; // v7.9.4-7.9.6: 旧EMAスムージング済み値(v7.9.7で表示用途は廃止、デバッグ表示用に残す)
+let __geoHeadingAccumulated = null; // v7.9.7: 累積角度(360を超えて連続変化、ビーム表示はこちらを使う)
 let __geoOrientHandler = null; // deviceorientation イベントハンドラ参照(停止時に外す)
 let __geoOrientSource = null;  // v7.9.4: 'absolute' | 'fallback' のどちらを採用したか(両方listenを防ぐ)
 let __geoSpikeCount = 0;       // v7.9.5: スパイク連続回数。3回連続で来たら受け入れる(真の急回転と判断)
@@ -3038,17 +3043,14 @@ function startGeoTracking() {
 //                     来ない場合のみ deviceorientation(相対)に降りる。
 //   - PC: 磁気センサーなしの端末がほとんど → 値が来ないだけで害はない。
 
-// v7.9.4: ローパスフィルタの係数。
-// v7.9.5: 0.25 → 0.15 に下げて、磁気センサーのノイズに対する耐性を強化。
-//          反応速度は若干遅くなるが、「迷子用途」では滑らかさを優先する。
+// v7.9.4-7.9.6: ローパスフィルタの係数。
+// v7.9.7: ビーム表示には使わなくなった(累積角度+CSS transition方式に移行)。
+//          デバッグオーバーレイの shown 表示用としてのみ残す。
 const __GEO_HEADING_EMA_ALPHA = 0.15;
 
 // v7.9.5: スパイク閾値(度)。連続するセンサー値の差がこれを超えた場合、
 // 「真の回転」ではなく「センサーノイズ」と判定して値をスキップする。
-// 人間が 1 フレーム(数十ms)で 45° も回転することは現実的にないので、
-// それを超えるジャンプは磁気センサーの瞬間的なドリフトとみなして安全に捨てる。
-// これがないと、EMA が「最短経路」でノイズ値に引っ張られて、
-// 「右回転中に北西あたりで一瞬左に戻る」現象が発生する。
+// v7.9.7: 累積角度方式でも生センサーノイズへの保険として有効なので継続採用。
 const __GEO_HEADING_SPIKE_THRESHOLD = 45;
 
 // v7.9.5: デバッグログ。原因究明時に true にすると console に生値とフィルタ値が出る。
@@ -3098,6 +3100,7 @@ function __geoDebugUpdate(rawHeading, evt) {
     const fmt = v => (v == null || isNaN(v)) ? '—' : v.toFixed(1) + '°';
     set('gdo-raw', fmt(rawHeading));
     set('gdo-shown', fmt(__geoHeadingSmoothed));
+    set('gdo-accum', fmt(__geoHeadingAccumulated));
     set('gdo-alpha', fmt(evt && typeof evt.alpha === 'number' ? evt.alpha : null));
     set('gdo-absolute', evt ? String(evt.absolute) : '—',
         evt && evt.absolute === true ? 'is-good' :
@@ -3125,6 +3128,8 @@ function __geoDebugUpdate(rawHeading, evt) {
 }
 
 // v7.9.4: 角度の指数移動平均。0/360 境界で破綻しないよう sin/cos 経由で計算する。
+// v7.9.7: ビーム表示には使わない(累積角度+CSS transitionに移行)。
+//          デバッグオーバーレイの shown 値の参考表示用としてのみ呼ぶ。
 function __smoothHeading(prev, next, alpha) {
     if (prev == null || isNaN(prev)) return next;
     // sin/cos に分解(度→ラジアン)
@@ -3135,6 +3140,41 @@ function __smoothHeading(prev, next, alpha) {
     let deg = Math.atan2(sinV, cosV) * 180 / Math.PI;
     if (deg < 0) deg += 360;
     return deg;
+}
+
+// v7.9.7: 累積角度方式での更新。
+//
+// 【設計のキモ】
+// CSS の `transform: rotate(deg)` は値を「絶対角度」として補間する。つまり
+// rotate(359deg) から rotate(1deg) に変えると、CSS は -358度の長い逆回転を
+// 0.3秒かけてアニメートしてしまう(これが v7.9.6 までの「北で飛ぶ」の真因)。
+//
+// 解決策: ビーム要素に渡す値は 0〜360 にラップせず、累積で持つ。
+// 例: 真北を1周時計回りで回ると、内部値は 0° → 360° → 720° と増え続ける。
+// 1周反時計回りなら 0° → -360° → -720° と減り続ける。
+// 表示は rotate(720deg) でも rotate(0deg) でも見た目は同じだが、
+// 「次の値が rotate(721deg) か rotate(1deg) か」で CSS transition の経路が
+// 大違いになる。最短経路を常に内部値レベルで保持するのがこの方式。
+//
+// 引数 rawHeading: 0〜360 の生角度(センサーから来た値)
+// 戻り値: 累積角度(-∞〜+∞、ビームの transform: rotate に直接使える)
+function __updateAccumulatedHeading(rawHeading) {
+    if (__geoHeadingAccumulated == null) {
+        __geoHeadingAccumulated = rawHeading;
+        return __geoHeadingAccumulated;
+    }
+    // 前回の累積角度を 0〜360 に正規化(比較用)
+    const prevNorm = ((__geoHeadingAccumulated % 360) + 360) % 360;
+    // 差分を計算
+    let diff = rawHeading - prevNorm;
+    // 最短経路を選ぶ:
+    //   diff > 180 ならむしろ「反時計回りに 360-diff 度」のほうが近い
+    //   diff < -180 ならむしろ「時計回りに 360+diff 度」のほうが近い
+    if (diff > 180) diff -= 360;
+    else if (diff < -180) diff += 360;
+    // 差分を累積に加える(累積値はラップしない)
+    __geoHeadingAccumulated += diff;
+    return __geoHeadingAccumulated;
 }
 
 // v7.9.4: iOS 端末判定。webkitCompassHeading を信用してよいかの基準に使う。
@@ -3177,12 +3217,14 @@ function startGeoHeading() {
 
         if (heading == null || isNaN(heading) || heading < 0 || heading >= 360) return;
 
-        // v7.9.5: スパイク閉め出し。前回値と比較して 45° 以上ジャンプしている
+        // v7.9.5: スパイク閉め出し。前回の生値と比較して 45° 以上ジャンプしている
         // 値はセンサーノイズと判定して破棄。ただし「初回値」(prev=null)と、
         // ジャンプが何度も続いた場合(=実際には大きく回ったらしい)は通す。
-        if (__geoHeadingSmoothed != null) {
+        // v7.9.7: 比較基準を __geoHeadingSmoothed → __geoHeading に変更。
+        //          EMA を表示から外したため、生値同士で比較するのが筋。
+        if (__geoHeading != null) {
             // 角度の循環を考慮した最短距離(0/360境界をまたぐ場合も正しく)
-            let diff = Math.abs(heading - __geoHeadingSmoothed);
+            let diff = Math.abs(heading - __geoHeading);
             if (diff > 180) diff = 360 - diff;
 
             if (diff > __GEO_HEADING_SPIKE_THRESHOLD) {
@@ -3190,7 +3232,7 @@ function startGeoHeading() {
                 // 「真の急回転」だった可能性があるので、3回連続したら受け入れる。
                 __geoSpikeCount = (__geoSpikeCount || 0) + 1;
                 if (window.__geoDebug) {
-                    console.log(`[geo] SPIKE rejected: ${heading.toFixed(1)}° (prev ${__geoHeadingSmoothed.toFixed(1)}°, diff ${diff.toFixed(1)}°, count ${__geoSpikeCount})`);
+                    console.log(`[geo] SPIKE rejected: ${heading.toFixed(1)}° (prev ${__geoHeading.toFixed(1)}°, diff ${diff.toFixed(1)}°, count ${__geoSpikeCount})`);
                 }
                 if (__geoSpikeCount < 3) return;
                 // 3回連続したらリセットして受け入れる
@@ -3200,12 +3242,16 @@ function startGeoHeading() {
             }
         }
 
-        // 生の値を保存しつつ、ビーム表示用は EMA で滑らかにする
+        // v7.9.7: 表示は累積角度方式で行う。EMA は実用上廃止(デバッグ表示にのみ残す)。
+        // 生値を保存
         __geoHeading = heading;
+        // EMA はデバッグオーバーレイの shown 値表示用にだけ計算しておく(参考値)
         __geoHeadingSmoothed = __smoothHeading(__geoHeadingSmoothed, heading, __GEO_HEADING_EMA_ALPHA);
+        // ビーム表示用の累積角度を更新
+        __updateAccumulatedHeading(heading);
 
         if (window.__geoDebug) {
-            console.log(`[geo] raw=${heading.toFixed(1)}° smoothed=${__geoHeadingSmoothed.toFixed(1)}° src=${__geoOrientSource} screen=${__getScreenAngle()}° alpha=${e.alpha?.toFixed(1)} absolute=${e.absolute} webkit=${e.webkitCompassHeading?.toFixed(1)}`);
+            console.log(`[geo] raw=${heading.toFixed(1)}° accum=${__geoHeadingAccumulated.toFixed(1)}° smoothed=${__geoHeadingSmoothed.toFixed(1)}° src=${__geoOrientSource} screen=${__getScreenAngle()}° alpha=${e.alpha?.toFixed(1)} absolute=${e.absolute} webkit=${e.webkitCompassHeading?.toFixed(1)}`);
             __geoDebugUpdate(heading, e);
         }
 
@@ -3276,15 +3322,20 @@ function stopGeoHeading() {
     }
     __geoHeading = null;
     __geoHeadingSmoothed = null;  // v7.9.4: フィルタもリセット(次回起動時に初期値から)
+    __geoHeadingAccumulated = null;  // v7.9.7: 累積角度もリセット(次回起動時に初期値から)
     __geoOrientSource = null;     // v7.9.4: ソース選択もリセット
     __geoSpikeCount = 0;          // v7.9.5: スパイクカウンタもリセット
 }
 
 // 方角をマーカーのビーム要素 (transform: rotate) に反映する。
 // マーカーが描画される前に方角だけ先に来ることもあるので、要素の存在をチェック。
-// v7.9.4: 表示はローパスフィルタ済みの値を使う(滑らかな回転、ノイズ吸収)。
+// v7.9.7: 表示には累積角度 __geoHeadingAccumulated を使う。
+//          これにより rotate(359deg) → rotate(361deg) のように常に小さな差で
+//          値が変化し、CSS transition が「最短経路」で滑らかに補間する。
+//          ラップ値(0/360境界)で見かけ上の逆回転が発生する v7.9.6 までの
+//          問題が完全に解消する。
 function applyGeoHeading() {
-    if (!__geoMarker || __geoHeadingSmoothed == null) return;
+    if (!__geoMarker || __geoHeadingAccumulated == null) return;
     const el = __geoMarker.getElement();
     if (!el) return;
     const inner = el.querySelector('.geo-marker');
@@ -3292,7 +3343,7 @@ function applyGeoHeading() {
     inner.classList.add('has-heading');
     const beam = inner.querySelector('.geo-beam');
     if (beam) {
-        beam.style.transform = `translate(-50%, -50%) rotate(${__geoHeadingSmoothed}deg)`;
+        beam.style.transform = `translate(-50%, -50%) rotate(${__geoHeadingAccumulated}deg)`;
     }
 }
 
