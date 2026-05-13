@@ -760,6 +760,14 @@ body.has-fullscreen-map {
        パルスが背面に潜って予期せぬ場所に出てしまう可能性がある。
        isolation: isolate は z-index 影響なく context を作る安全な方法。 */
     isolation: isolate;
+    /* v7.9.2 (バグ修正C): 過去日表示で .tl-pulse の top: 9999px 設定により
+       window スクロール領域が極端に拡張される問題があった。修正Aで根本原因の
+       9999px 設定は削除済みだが、将来同種のバグが入り込んだ場合の保険として、
+       .timeline の外に子要素が視覚的にはみ出さないよう overflow: hidden を追加。
+       副作用: .tl-hex の box-shadow glow (18px) が左端で 14px 切られる可能性が
+       あるが、Δ4px の padding-left では glow がほぼカードと六角形の右側へ伸び
+       ており、左端への影響は微小と判断。気になる場合は padding-left を増やす。 */
+    overflow: hidden;
 }
 /* 連続spine本体 — .timeline の高さ全体を貫く1本の線
    v7.7: 設計変更。v7-step5/6/7 で .timeline::before + CSS変数(--spine-top/bottom)
@@ -822,6 +830,14 @@ body.has-fullscreen-map {
 }
 /* 3本のパルスの animation-delay は JS 側で inline style で設定する
    (v7-step4: CSS の :nth-of-type は他の div と競合して効かないため) */
+
+/* v7.9.2 (バグ修正A): 過去日(全イベントが status-past)では
+   パルスを完全停止。display: none にすることで position: absolute による
+   .timeline 高さへの干渉も消える。
+   セレクタの注意: JS は <div id="timeline"> (CSS class なし) に .no-pulse を
+   付与する。<div class="timeline" id="timeline-wrap"> ではない。
+   そのため #timeline.no-pulse 側で指定する必要がある。 */
+#timeline.no-pulse .tl-pulse { display: none; }
 
 .tl-item {
     position: relative;
@@ -1021,21 +1037,24 @@ body.has-fullscreen-map {
                  weight も 500 → 600 にして視認性を確保。
 */
 .tl-card .card-num-badge {
-    /* v7.9.1: 時刻の右隣に inline 配置。card-head が flex 行となり、
-       justify-content: space-between で左=時刻、右=番号 が自動で揃う。
-       透明度は時刻(主役)より弱め(opacity 0.65)に抑えてバランスを取る。 */
+    /* v7.9.2: 可読性を最優先に再調整。
+       v7.9   : 0.55rem (本体 .card-tag 準拠) → 密な行程表内では小さすぎ。
+       v7.9.1 : 0.7rem + opacity 0.65 (時刻控えめバランス重視) → まだ薄くて読みにくい。
+       v7.9.2 : 0.85rem + opacity 0.9。地図対応という「機能」を持つ番号は
+                明確に読めることが最優先。時刻は font-size 15px (≒ 0.94rem) なので
+                0.85rem は時刻より若干小さく、視覚的階層は依然として時刻 > 番号。 */
     font-family: var(--text-mono);
-    font-size: 0.7rem;        /* ≒ 11.2px、密な行程表カード内でも読める最低限 */
+    font-size: 0.85rem;
     font-weight: 600;
     letter-spacing: 0.18em;
     line-height: 1;
-    color: var(--badge-color, rgba(243, 156, 18, 0.85));
-    opacity: 0.65;            /* 時刻より控えめに */
+    color: var(--badge-color, rgba(243, 156, 18, 1));
+    opacity: 0.9;
     background: transparent;
     border: 0;
     padding: 0;
     margin: 0;
-    align-self: center;       /* flex 内で垂直中央寄せ */
+    align-self: center;
     flex-shrink: 0;
     pointer-events: none;
 }
@@ -1672,9 +1691,11 @@ body.has-fullscreen-map {
         /* v7.9.1: 番号バッジが card-head 内に戻ったため、padding-top も通常値に。 */
         padding: 11px 12px 11px 18px;
     }
-    /* v7.9.1: モバイル時の番号バッジは少し小さく。inline 配置なので位置調整は不要。 */
+    /* v7.9.2: モバイル時の番号バッジ。デスクトップ 0.85rem → モバイル 0.8rem。
+       モバイル時刻は 14px (= 0.875rem) なので、番号 0.8rem は時刻よりわずかに小さい
+       階層関係を維持。 */
     .tl-card .card-num-badge {
-        font-size: 0.65rem;
+        font-size: 0.8rem;
     }
     /* v7.7 改 (項目3-b): モバイルでも情報階層を保つ。
        時刻 (15px → モバイル14px) と行程名 (13px → モバイル12.5px) の
@@ -2389,8 +2410,16 @@ function renderDay() {
         tl.style.setProperty('--pulse-end-y', `${lastHexY}px`);
 
         // パルスの発射起点
+        // v7.9.2 (バグ修正A): 全イベントが status-past の日(過去日表示)では
+        // firstActive が null。旧設計は --pulse-start-y を 9999px に設定して
+        // 「画面外に飛ばす」つもりだったが、.tl-pulse は position: absolute で
+        // .timeline の高さに干渉するため、巨大な余白(画面1枚分)とパルスが
+        // 画面下から飛んで来る現象を生んでいた。
+        // 対策: 過去日では .timeline に .no-pulse を付与し、CSS で
+        // .no-pulse .tl-pulse { display: none } として完全に描画停止する。
         const firstActive = tl.querySelector('.tl-item:not(.status-past)');
         if (firstActive) {
+            tl.classList.remove('no-pulse');
             const fa = firstActive.querySelector('.tl-hex-wrap');
             if (fa) {
                 const faRect = fa.getBoundingClientRect();
@@ -2398,7 +2427,8 @@ function renderDay() {
                 tl.style.setProperty('--pulse-start-y', `${y - 18}px`);
             }
         } else {
-            tl.style.setProperty('--pulse-start-y', `9999px`);
+            // 過去日:パルス自体を描画停止。CSS変数の設定は不要(display:none で参照されない)。
+            tl.classList.add('no-pulse');
         }
     }
 
@@ -2415,6 +2445,12 @@ function renderDay() {
     if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(measureAndApplySpine).catch(() => {});
     }
+
+    // v7.9.2 (バグ修正B): カード展開で .timeline 高さが変わった時に
+    // 外から再測定を呼べるよう、関数を window に公開。
+    // card.click ハンドラ(renderEventCard 内)から transition 終了相当の
+    // タイミングで呼ばれる。
+    window.__measureSpine = measureAndApplySpine;
 }
 
 function renderEventCard(ev, evIdx, dayDate) {
@@ -2543,6 +2579,15 @@ function renderEventCard(ev, evIdx, dayDate) {
         card.addEventListener('click', (e) => {
             // 詳細展開
             card.classList.toggle('expanded');
+            // v7.9.2 (バグ修正B): 展開で .timeline 高さが変わる。
+            // .detail の transition は 0.32s ease なので、完了相当のタイミングで spine 再測定。
+            // 念のため transition 中(150ms)と完了後(350ms, 600ms)の3回測定し、
+            // どこかで正しい値に確定させる。
+            if (typeof window.__measureSpine === 'function') {
+                setTimeout(window.__measureSpine, 150);
+                setTimeout(window.__measureSpine, 350);
+                setTimeout(window.__measureSpine, 600);
+            }
         });
     }
     // カードクリック(展開トグルとは別の場所:時刻部分など)で
