@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard</title>
+<title>ITINERARY — Premium Travel Dashboard v7.9.4</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -2860,8 +2860,10 @@ let __geoWatchId = null;       // watchPosition の ID。null = 追跡停止中
 let __geoMarker = null;        // L.marker (青の脈動コア)
 let __geoAccCircle = null;     // L.circle (物理メートル半径の精度円)
 let __geoFirstFix = true;      // 初回 fix で地図を pan するためのフラグ
-let __geoHeading = null;       // 現在の方角(度、北=0、東=90)。null = 取得できない
+let __geoHeading = null;       // 現在の生方角(度、北=0、東=90)。null = 取得できない
+let __geoHeadingSmoothed = null; // v7.9.4: ローパスフィルタ済み方角(ビーム表示はこちらを使う)
 let __geoOrientHandler = null; // deviceorientation イベントハンドラ参照(停止時に外す)
+let __geoOrientSource = null;  // v7.9.4: 'absolute' | 'fallback' のどちらを採用したか(両方listenを防ぐ)
 
 function geoToast(message, isError = false, duration = 3000) {
     // 既存のトーストがあれば消す
@@ -2914,32 +2916,132 @@ function startGeoTracking() {
     startGeoHeading();
 }
 
-// v7.9.3: 方角 (デバイスのコンパス向き) を取得して、マーカーのビームを回す。
-// 二つの API があり、対応状況がプラットフォームで異なる:
-//   - iOS Safari: DeviceOrientationEvent.requestPermission() で許可必須、
-//                 event.webkitCompassHeading (時計回り、北=0) が真北
-//   - Android Chrome: 許可不要、event.alpha (反時計回り、上が北) を使う
-//   - PC: ほぼ全滅 (磁気センサーがない) → 失敗で OK
+// v7.9.4: 方角 (デバイスのコンパス向き) を取得して、マーカーのビームを回す。
+//
+// 【v7.9.3 → v7.9.4 で直したこと】
+//   ① 二重 listen 廃止: deviceorientationabsolute と deviceorientation を両方
+//      アタッチすると、片方は絶対値・片方は相対値で交互に値が来て「逆回転で
+//      一瞬飛ぶ」現象の原因になる。absolute を優先し、来なかったら相対値に
+//      フォールバック(一度切り替えたら戻さない)。
+//   ② iOS 判定の厳格化: webkitCompassHeading は iOS のみ信用。一部 Android で
+//      この値を返すブラウザがあるが信頼性が低い。userAgent で iOS を確定する。
+//   ③ 画面回転補正: 横画面/逆さまでは screen.orientation.angle ぶん補正する。
+//      これがないと「常に一定角度ずれる」状態になる(ご報告の主症状)。
+//   ④ ローパスフィルタ(EMA, α=0.25): センサーのノイズと「振り向き時の飛び」を
+//      吸収する。角度の循環(0/360境界)で破綻しないよう sin/cos に分解して
+//      平均してから atan2 で復元する。
+//   ⑤ 値の妥当性チェック強化: NaN/undefined/負値などの破綻値を捨てる。
+//
+// 【プラットフォーム別の経路】
+//   - iOS Safari: requestPermission 通過後、event.webkitCompassHeading
+//                 (時計回り、北=0) を採用。これは真北で安定している。
+//   - Android Chrome: deviceorientationabsolute(絶対方位)→ alpha 反転 → 採用。
+//                     来ない場合のみ deviceorientation(相対)に降りる。
+//   - PC: 磁気センサーなしの端末がほとんど → 値が来ないだけで害はない。
+
+// v7.9.4: ローパスフィルタの係数。0.25 は地図アプリ標準値で、
+// 「反応の速さ」と「滑らかさ」のバランスが取れる値。
+const __GEO_HEADING_EMA_ALPHA = 0.25;
+
+// v7.9.4: 角度の指数移動平均。0/360 境界で破綻しないよう sin/cos 経由で計算する。
+function __smoothHeading(prev, next, alpha) {
+    if (prev == null || isNaN(prev)) return next;
+    // sin/cos に分解(度→ラジアン)
+    const pr = prev * Math.PI / 180;
+    const nx = next * Math.PI / 180;
+    const sinV = alpha * Math.sin(nx) + (1 - alpha) * Math.sin(pr);
+    const cosV = alpha * Math.cos(nx) + (1 - alpha) * Math.cos(pr);
+    let deg = Math.atan2(sinV, cosV) * 180 / Math.PI;
+    if (deg < 0) deg += 360;
+    return deg;
+}
+
+// v7.9.4: iOS 端末判定。webkitCompassHeading を信用してよいかの基準に使う。
+function __isIOSDevice() {
+    const ua = navigator.userAgent || '';
+    // iPadOS 13+ は Mac として名乗るので touch 数でも判定
+    return /iPhone|iPad|iPod/.test(ua) ||
+           (ua.includes('Mac') && navigator.maxTouchPoints > 1);
+}
+
+// v7.9.4: 現在の画面回転角(度)。横画面では alpha を補正するために使う。
+function __getScreenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') {
+        return screen.orientation.angle;
+    }
+    // Safari など古い API への対応(将来削除可)
+    if (typeof window.orientation === 'number') return window.orientation;
+    return 0;
+}
+
 function startGeoHeading() {
     if (typeof DeviceOrientationEvent === 'undefined') return;
 
+    const isIOS = __isIOSDevice();
+
+    // 値を処理してビームに反映する共通ロジック
+    const processEvent = (e) => {
+        let heading = null;
+
+        if (isIOS && typeof e.webkitCompassHeading === 'number') {
+            // iOS: webkitCompassHeading は時計回り・真北基準で信頼できる
+            heading = e.webkitCompassHeading;
+        } else if (typeof e.alpha === 'number' && !isNaN(e.alpha)) {
+            // Android (またはiOS で webkitCompassHeading が無い古い端末):
+            // alpha は反時計回りなので 360 - alpha で時計回りに直す
+            heading = (360 - e.alpha) % 360;
+            // 画面回転ぶんを補正(横画面では端末上端が真北ではないため)
+            heading = (heading + __getScreenAngle()) % 360;
+        }
+
+        if (heading == null || isNaN(heading) || heading < 0 || heading >= 360) return;
+
+        // 生の値を保存しつつ、ビーム表示用は EMA で滑らかにする
+        __geoHeading = heading;
+        __geoHeadingSmoothed = __smoothHeading(__geoHeadingSmoothed, heading, __GEO_HEADING_EMA_ALPHA);
+        applyGeoHeading();
+    };
+
     const attach = () => {
-        __geoOrientHandler = (e) => {
-            // iOS 系: webkitCompassHeading (時計回り、北=0、東=90)
-            // Android 系: alpha (反時計回り、北=0)、true=絶対方位
-            let heading = null;
-            if (typeof e.webkitCompassHeading === 'number') {
-                heading = e.webkitCompassHeading;
-            } else if (typeof e.alpha === 'number' && e.absolute) {
-                heading = (360 - e.alpha) % 360;
+        // まず absolute イベントを試す(Android で最も信頼できる経路)
+        const absoluteHandler = (e) => {
+            if (__geoOrientSource === null) {
+                // 最初の absolute イベントが来た時点でこちらに固定し、
+                // フォールバック側のイベントを以降は無視する
+                __geoOrientSource = 'absolute';
             }
-            if (heading == null || isNaN(heading)) return;
-            __geoHeading = heading;
-            applyGeoHeading();
+            if (__geoOrientSource !== 'absolute') return;
+            processEvent(e);
         };
-        // iOS 13+ は deviceorientationabsolute を提供、Android は deviceorientation で absolute フラグ
-        window.addEventListener('deviceorientationabsolute', __geoOrientHandler, true);
-        window.addEventListener('deviceorientation', __geoOrientHandler, true);
+
+        // フォールバック: 通常の deviceorientation
+        // (absolute が一定時間来なかった場合のみ採用)
+        const fallbackHandler = (e) => {
+            // absolute が既に動いているならこちらは無視
+            if (__geoOrientSource === 'absolute') return;
+            // iOS で webkitCompassHeading があれば true でも採用する
+            // (絶対方位として信頼できるため)
+            const hasCompass = isIOS && typeof e.webkitCompassHeading === 'number';
+            // Android の相対方位 (e.absolute === false) でも、画面回転補正+EMA で
+            // 「ずっと使えないよりはマシ」な精度になる。0.8 秒経っても absolute
+            // が来なかったら fallback に切り替える設計。
+            if (__geoOrientSource === null) return; // 初回 0.8s は様子見
+            if (__geoOrientSource !== 'fallback' && !hasCompass) return;
+            processEvent(e);
+        };
+
+        // 0.8 秒待っても absolute が来なかったら fallback を有効化
+        setTimeout(() => {
+            if (__geoOrientSource === null) {
+                __geoOrientSource = 'fallback';
+            }
+        }, 800);
+
+        // ハンドラ参照を保存(stop 時に外すため)
+        __geoOrientHandler = { absoluteHandler, fallbackHandler };
+
+        window.addEventListener('deviceorientationabsolute', absoluteHandler, true);
+        window.addEventListener('deviceorientation', fallbackHandler, true);
     };
 
     // iOS は許可リクエストが必要
@@ -2958,17 +3060,20 @@ function startGeoHeading() {
 
 function stopGeoHeading() {
     if (__geoOrientHandler) {
-        window.removeEventListener('deviceorientationabsolute', __geoOrientHandler, true);
-        window.removeEventListener('deviceorientation', __geoOrientHandler, true);
+        window.removeEventListener('deviceorientationabsolute', __geoOrientHandler.absoluteHandler, true);
+        window.removeEventListener('deviceorientation', __geoOrientHandler.fallbackHandler, true);
         __geoOrientHandler = null;
     }
     __geoHeading = null;
+    __geoHeadingSmoothed = null;  // v7.9.4: フィルタもリセット(次回起動時に初期値から)
+    __geoOrientSource = null;     // v7.9.4: ソース選択もリセット
 }
 
 // 方角をマーカーのビーム要素 (transform: rotate) に反映する。
 // マーカーが描画される前に方角だけ先に来ることもあるので、要素の存在をチェック。
+// v7.9.4: 表示はローパスフィルタ済みの値を使う(滑らかな回転、ノイズ吸収)。
 function applyGeoHeading() {
-    if (!__geoMarker || __geoHeading == null) return;
+    if (!__geoMarker || __geoHeadingSmoothed == null) return;
     const el = __geoMarker.getElement();
     if (!el) return;
     const inner = el.querySelector('.geo-marker');
@@ -2976,7 +3081,7 @@ function applyGeoHeading() {
     inner.classList.add('has-heading');
     const beam = inner.querySelector('.geo-beam');
     if (beam) {
-        beam.style.transform = `translate(-50%, -50%) rotate(${__geoHeading}deg)`;
+        beam.style.transform = `translate(-50%, -50%) rotate(${__geoHeadingSmoothed}deg)`;
     }
 }
 
