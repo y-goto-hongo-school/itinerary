@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard v7.9.5</title>
+<title>ITINERARY — Premium Travel Dashboard v7.9.6</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -642,6 +642,86 @@ body.has-fullscreen-map {
 }
 
 /* ──────────── v7.9.3 ここまで ──────────── */
+
+/* ──────────── v7.9.6: 方角デバッグオーバーレイ ────────────
+   方角ビームの実測値をリアルタイム表示。原因究明用の一時的UI。
+   有効化: URL に ?geodebug=1 を付ける、または DevTools で
+   window.__geoDebug = true を実行。
+   デフォルトは display: none で完全に隠れる(本番では一切見えない)。
+   ────────────────────────────────────────────────── */
+.geo-debug-overlay {
+    display: none; /* 既定では非表示。.is-visible で出す */
+    position: absolute;
+    top: 80px; /* map-controls の下に配置 */
+    right: 12px;
+    z-index: 700; /* 地図より上、モーダルより下 */
+    min-width: 180px;
+    padding: 8px 10px;
+    background: rgba(2, 5, 12, 0.78);
+    border: 1px solid var(--card-border);
+    border-left: 2px solid var(--accent-cyan);
+    border-radius: 4px;
+    font-family: var(--text-mono);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: rgba(220, 235, 255, 0.92);
+    box-shadow: 0 0 14px rgba(0, 242, 254, 0.18);
+    pointer-events: none; /* クリックを地図に通す */
+    user-select: none;
+    letter-spacing: 0.02em;
+}
+.geo-debug-overlay.is-visible {
+    display: block;
+}
+.geo-debug-overlay .geo-debug-title {
+    font-family: var(--text-display);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--accent-cyan);
+    margin-bottom: 5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(0, 242, 254, 0.18);
+    text-transform: uppercase;
+}
+.geo-debug-overlay .geo-debug-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+.geo-debug-overlay .geo-debug-key {
+    color: rgba(160, 180, 200, 0.7);
+}
+.geo-debug-overlay .geo-debug-val {
+    color: rgba(220, 235, 255, 0.95);
+    font-variant-numeric: tabular-nums;
+}
+.geo-debug-overlay .geo-debug-val.is-good { color: var(--accent-green); }
+.geo-debug-overlay .geo-debug-val.is-warn { color: var(--accent-warm); }
+.geo-debug-overlay .geo-debug-val.is-error { color: var(--accent-warning); }
+.geo-debug-overlay .geo-debug-divider {
+    height: 1px;
+    background: rgba(0, 242, 254, 0.1);
+    margin: 4px 0;
+}
+.geo-debug-overlay .geo-debug-hint {
+    margin-top: 6px;
+    padding-top: 5px;
+    border-top: 1px dashed rgba(0, 242, 254, 0.15);
+    font-size: 9.5px;
+    color: rgba(160, 180, 200, 0.55);
+    font-style: italic;
+}
+
+/* スマホでは少し位置調整 */
+@media (max-width: 480px) {
+    .geo-debug-overlay {
+        top: auto;
+        bottom: 80px; /* 下部に配置(上は map-controls で混む) */
+        right: 8px;
+        min-width: 160px;
+        font-size: 10px;
+    }
+}
 
 .corner {
     position: absolute;
@@ -2004,6 +2084,24 @@ body.has-fullscreen-map {
         </div>
         <div class="map-zoom-info" id="map-zoom-info">SCALE: —</div>
         <div class="map-coords" id="map-coords">— / —</div>
+        <!-- v7.9.6: 方角デバッグオーバーレイ。
+             URLに ?geodebug=1 を付けるか window.__geoDebug=true で出現。
+             本番(URLパラメータなし)では display: none で完全に隠れる。 -->
+        <div class="geo-debug-overlay" id="geo-debug-overlay" aria-hidden="true">
+            <div class="geo-debug-title">▸ GEO DEBUG</div>
+            <div class="geo-debug-row"><span class="geo-debug-key">raw</span><span class="geo-debug-val" id="gdo-raw">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">shown</span><span class="geo-debug-val" id="gdo-shown">—</span></div>
+            <div class="geo-debug-divider"></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">alpha</span><span class="geo-debug-val" id="gdo-alpha">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">absolute</span><span class="geo-debug-val" id="gdo-absolute">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">webkit</span><span class="geo-debug-val" id="gdo-webkit">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">source</span><span class="geo-debug-val" id="gdo-source">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">screen</span><span class="geo-debug-val" id="gdo-screen">—</span></div>
+            <div class="geo-debug-divider"></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">spikes</span><span class="geo-debug-val" id="gdo-spikes">—</span></div>
+            <div class="geo-debug-row"><span class="geo-debug-key">events</span><span class="geo-debug-val" id="gdo-events">—</span></div>
+            <div class="geo-debug-hint" id="gdo-hint">facing north?</div>
+        </div>
     </div>
 
     <!-- (旧 stats-bar は廃止 — 旅全体の進行は本体トップが担当する) -->
@@ -2954,9 +3052,77 @@ const __GEO_HEADING_EMA_ALPHA = 0.15;
 const __GEO_HEADING_SPIKE_THRESHOLD = 45;
 
 // v7.9.5: デバッグログ。原因究明時に true にすると console に生値とフィルタ値が出る。
-// 本番では false(ノイズを増やさない)。実機で確認したい時だけ
-// DevTools Console で `window.__geoDebug = true` と打てば動的に ON にできる。
-window.__geoDebug = window.__geoDebug || false;
+// v7.9.6: URL パラメータ ?geodebug=1 でも有効化できるよう拡張。
+//          画面右上(モバイルは右下)に半透明オーバーレイで実測値を表示する。
+// 本番では false / URLパラメータなし(ノイズを増やさない)。
+// 実機で確認したい時は次のいずれかで有効化:
+//   1) URL末尾に ?geodebug=1 を付けてリロード
+//   2) DevTools Console で `window.__geoDebug = true; __geoDebugApplyVisibility();`
+window.__geoDebug = window.__geoDebug || (() => {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('geodebug') === '1';
+    } catch (_) { return false; }
+})();
+
+// v7.9.6: イベント頻度測定用のリングバッファ(過去1.2秒のイベントタイムスタンプ)
+let __geoEventTimestamps = [];
+
+// v7.9.6: オーバーレイ要素の表示/非表示を __geoDebug の状態に合わせる
+function __geoDebugApplyVisibility() {
+    const overlay = document.getElementById('geo-debug-overlay');
+    if (!overlay) return;
+    if (window.__geoDebug) {
+        overlay.classList.add('is-visible');
+    } else {
+        overlay.classList.remove('is-visible');
+    }
+}
+
+// v7.9.6: オーバーレイの値を更新する。processEvent から毎回呼ぶ。
+// 重い DOM 操作になりすぎないよう、textContent 更新のみで完結させる。
+function __geoDebugUpdate(rawHeading, evt) {
+    if (!window.__geoDebug) return;
+    const overlay = document.getElementById('geo-debug-overlay');
+    if (!overlay || !overlay.classList.contains('is-visible')) return;
+
+    const set = (id, val, cls) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = val;
+        el.classList.remove('is-good', 'is-warn', 'is-error');
+        if (cls) el.classList.add(cls);
+    };
+
+    // 値の整形
+    const fmt = v => (v == null || isNaN(v)) ? '—' : v.toFixed(1) + '°';
+    set('gdo-raw', fmt(rawHeading));
+    set('gdo-shown', fmt(__geoHeadingSmoothed));
+    set('gdo-alpha', fmt(evt && typeof evt.alpha === 'number' ? evt.alpha : null));
+    set('gdo-absolute', evt ? String(evt.absolute) : '—',
+        evt && evt.absolute === true ? 'is-good' :
+        evt && evt.absolute === false ? 'is-warn' : null);
+    set('gdo-webkit', fmt(evt && typeof evt.webkitCompassHeading === 'number' ? evt.webkitCompassHeading : null));
+    set('gdo-source', __geoOrientSource || '—',
+        __geoOrientSource === 'absolute' ? 'is-good' :
+        __geoOrientSource === 'fallback' ? 'is-warn' : null);
+    set('gdo-screen', __getScreenAngle() + '°');
+    set('gdo-spikes', String(__geoSpikeCount));
+
+    // イベント頻度: 過去1.2秒のイベント数
+    const now = performance.now();
+    __geoEventTimestamps.push(now);
+    while (__geoEventTimestamps.length && now - __geoEventTimestamps[0] > 1200) {
+        __geoEventTimestamps.shift();
+    }
+    const hz = __geoEventTimestamps.length / 1.2;
+    let hzCls = null;
+    if (hz < 5) hzCls = 'is-error';      // 異常に遅い
+    else if (hz < 15) hzCls = 'is-warn'; // 少し遅い
+    else if (hz > 200) hzCls = 'is-warn'; // 異常に速い
+    else hzCls = 'is-good';
+    set('gdo-events', `${__geoEventTimestamps.length} / 1.2s (~${hz.toFixed(0)}Hz)`, hzCls);
+}
 
 // v7.9.4: 角度の指数移動平均。0/360 境界で破綻しないよう sin/cos 経由で計算する。
 function __smoothHeading(prev, next, alpha) {
@@ -3040,6 +3206,7 @@ function startGeoHeading() {
 
         if (window.__geoDebug) {
             console.log(`[geo] raw=${heading.toFixed(1)}° smoothed=${__geoHeadingSmoothed.toFixed(1)}° src=${__geoOrientSource} screen=${__getScreenAngle()}° alpha=${e.alpha?.toFixed(1)} absolute=${e.absolute} webkit=${e.webkitCompassHeading?.toFixed(1)}`);
+            __geoDebugUpdate(heading, e);
         }
 
         applyGeoHeading();
@@ -3775,6 +3942,9 @@ function closeModal() {
 // ──────────────── 起動 ────────────────
 document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(() => document.body.classList.add('css-ready'));
+
+    // v7.9.6: URLパラメータ ?geodebug=1 で起動されている場合はオーバーレイ表示
+    __geoDebugApplyVisibility();
 
     $('#btn-export').addEventListener('click', exportItn);
     $('#btn-import').addEventListener('click', importItn);
