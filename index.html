@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard v7.9.7</title>
+<title>ITINERARY — Premium Travel Dashboard v7.9.9</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -575,16 +575,25 @@ body.has-fullscreen-map {
     width: 56px; height: 56px;
     transform: translate(-50%, -50%) rotate(0deg);
     transform-origin: center;
-    /* v7.9.7: ビームを「向いている方向」に開いた扇形にする。
-       conic-gradient の角度起点はブラウザ実装により from -30deg では
-       下向き(=南)に開いてしまう問題があったため、from 150deg(180度反転)
-       に修正。これで rotate(0deg) のとき扇形が真上(=北)を指す。
-       30度開きの扇形(以前は60度。広すぎたので方角の指向性を強める)。 */
+    /* v7.9.9: ビームの扇形を「視覚的にも幾何的にも真北中心」になるよう設計し直し。
+       
+       【v7.9.6までの問題】
+       conic-gradient(from -30deg, 0.45 0deg → 0.15 30deg → 透明 60deg ...)
+       これは「11時〜1時方向の60度幅」に青を塗るが、不透明度が
+       「11時側で濃く、1時側で薄く」非対称だったため、人間の目には
+       11時方向(=北北西、約340°)がビームの中心と認識され、
+       真北(0°)から約20度ずれて見えていた。
+       
+       【v7.9.9 の修正】
+       from -30deg に戻し(扇形の幾何的中心は12時=真北で正しい)、
+       不透明度のグラデーションを「薄い→濃い→薄い」の左右対称にする。
+       これにより視覚的中心と幾何的中心が一致し、ずれが消える。 */
     background: conic-gradient(
-        from 150deg,
-        rgba(59, 130, 246, 0.45) 0deg,
-        rgba(59, 130, 246, 0.15) 30deg,
-        transparent 60deg,
+        from -30deg,
+        rgba(59, 130, 246, 0.15) 0deg,    /* 11時方向: 薄い(扇形の左端) */
+        rgba(59, 130, 246, 0.45) 30deg,   /* 12時方向(=真北): 濃いピーク */
+        rgba(59, 130, 246, 0.15) 60deg,   /* 1時方向: 薄い(扇形の右端) */
+        transparent 60.01deg,              /* 扇形の外: 透明 */
         transparent 360deg
     );
     border-radius: 50%;
@@ -3053,6 +3062,10 @@ const __GEO_HEADING_EMA_ALPHA = 0.15;
 // v7.9.7: 累積角度方式でも生センサーノイズへの保険として有効なので継続採用。
 const __GEO_HEADING_SPIKE_THRESHOLD = 45;
 
+// v7.9.8 で導入した __GEO_BEAM_ANGLE_OFFSET (=180) は、CSS の扇形が南を
+// 中心にしていた誤設定への補正だったが、v7.9.9 で CSS 側を正しく直したため
+// (扇形の中心が真北・対称的に塗られる)、JS 側の補正は不要になり削除した。
+
 // v7.9.5: デバッグログ。原因究明時に true にすると console に生値とフィルタ値が出る。
 // v7.9.6: URL パラメータ ?geodebug=1 でも有効化できるよう拡張。
 //          画面右上(モバイルは右下)に半透明オーバーレイで実測値を表示する。
@@ -3334,6 +3347,9 @@ function stopGeoHeading() {
 //          値が変化し、CSS transition が「最短経路」で滑らかに補間する。
 //          ラップ値(0/360境界)で見かけ上の逆回転が発生する v7.9.6 までの
 //          問題が完全に解消する。
+// v7.9.9: v7.9.8 で入れていた +180° のオフセットは、CSS 側の誤設定を補うための
+//          一時的な処置だった。v7.9.9 で CSS を正しい設計に戻したため不要となり、
+//          累積角度をそのまま rotate に渡す形に戻した(=本来あるべき姿)。
 function applyGeoHeading() {
     if (!__geoMarker || __geoHeadingAccumulated == null) return;
     const el = __geoMarker.getElement();
