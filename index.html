@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard v7.9.4</title>
+<title>ITINERARY — Premium Travel Dashboard v7.9.5</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -2864,6 +2864,7 @@ let __geoHeading = null;       // 現在の生方角(度、北=0、東=90)。nul
 let __geoHeadingSmoothed = null; // v7.9.4: ローパスフィルタ済み方角(ビーム表示はこちらを使う)
 let __geoOrientHandler = null; // deviceorientation イベントハンドラ参照(停止時に外す)
 let __geoOrientSource = null;  // v7.9.4: 'absolute' | 'fallback' のどちらを採用したか(両方listenを防ぐ)
+let __geoSpikeCount = 0;       // v7.9.5: スパイク連続回数。3回連続で来たら受け入れる(真の急回転と判断)
 
 function geoToast(message, isError = false, duration = 3000) {
     // 既存のトーストがあれば消す
@@ -2939,9 +2940,23 @@ function startGeoTracking() {
 //                     来ない場合のみ deviceorientation(相対)に降りる。
 //   - PC: 磁気センサーなしの端末がほとんど → 値が来ないだけで害はない。
 
-// v7.9.4: ローパスフィルタの係数。0.25 は地図アプリ標準値で、
-// 「反応の速さ」と「滑らかさ」のバランスが取れる値。
-const __GEO_HEADING_EMA_ALPHA = 0.25;
+// v7.9.4: ローパスフィルタの係数。
+// v7.9.5: 0.25 → 0.15 に下げて、磁気センサーのノイズに対する耐性を強化。
+//          反応速度は若干遅くなるが、「迷子用途」では滑らかさを優先する。
+const __GEO_HEADING_EMA_ALPHA = 0.15;
+
+// v7.9.5: スパイク閾値(度)。連続するセンサー値の差がこれを超えた場合、
+// 「真の回転」ではなく「センサーノイズ」と判定して値をスキップする。
+// 人間が 1 フレーム(数十ms)で 45° も回転することは現実的にないので、
+// それを超えるジャンプは磁気センサーの瞬間的なドリフトとみなして安全に捨てる。
+// これがないと、EMA が「最短経路」でノイズ値に引っ張られて、
+// 「右回転中に北西あたりで一瞬左に戻る」現象が発生する。
+const __GEO_HEADING_SPIKE_THRESHOLD = 45;
+
+// v7.9.5: デバッグログ。原因究明時に true にすると console に生値とフィルタ値が出る。
+// 本番では false(ノイズを増やさない)。実機で確認したい時だけ
+// DevTools Console で `window.__geoDebug = true` と打てば動的に ON にできる。
+window.__geoDebug = window.__geoDebug || false;
 
 // v7.9.4: 角度の指数移動平均。0/360 境界で破綻しないよう sin/cos 経由で計算する。
 function __smoothHeading(prev, next, alpha) {
@@ -2996,9 +3011,37 @@ function startGeoHeading() {
 
         if (heading == null || isNaN(heading) || heading < 0 || heading >= 360) return;
 
+        // v7.9.5: スパイク閉め出し。前回値と比較して 45° 以上ジャンプしている
+        // 値はセンサーノイズと判定して破棄。ただし「初回値」(prev=null)と、
+        // ジャンプが何度も続いた場合(=実際には大きく回ったらしい)は通す。
+        if (__geoHeadingSmoothed != null) {
+            // 角度の循環を考慮した最短距離(0/360境界をまたぐ場合も正しく)
+            let diff = Math.abs(heading - __geoHeadingSmoothed);
+            if (diff > 180) diff = 360 - diff;
+
+            if (diff > __GEO_HEADING_SPIKE_THRESHOLD) {
+                // スパイクとして破棄。ただし続けて何度も同じ方向に来るなら
+                // 「真の急回転」だった可能性があるので、3回連続したら受け入れる。
+                __geoSpikeCount = (__geoSpikeCount || 0) + 1;
+                if (window.__geoDebug) {
+                    console.log(`[geo] SPIKE rejected: ${heading.toFixed(1)}° (prev ${__geoHeadingSmoothed.toFixed(1)}°, diff ${diff.toFixed(1)}°, count ${__geoSpikeCount})`);
+                }
+                if (__geoSpikeCount < 3) return;
+                // 3回連続したらリセットして受け入れる
+                __geoSpikeCount = 0;
+            } else {
+                __geoSpikeCount = 0;
+            }
+        }
+
         // 生の値を保存しつつ、ビーム表示用は EMA で滑らかにする
         __geoHeading = heading;
         __geoHeadingSmoothed = __smoothHeading(__geoHeadingSmoothed, heading, __GEO_HEADING_EMA_ALPHA);
+
+        if (window.__geoDebug) {
+            console.log(`[geo] raw=${heading.toFixed(1)}° smoothed=${__geoHeadingSmoothed.toFixed(1)}° src=${__geoOrientSource} screen=${__getScreenAngle()}° alpha=${e.alpha?.toFixed(1)} absolute=${e.absolute} webkit=${e.webkitCompassHeading?.toFixed(1)}`);
+        }
+
         applyGeoHeading();
     };
 
@@ -3067,6 +3110,7 @@ function stopGeoHeading() {
     __geoHeading = null;
     __geoHeadingSmoothed = null;  // v7.9.4: フィルタもリセット(次回起動時に初期値から)
     __geoOrientSource = null;     // v7.9.4: ソース選択もリセット
+    __geoSpikeCount = 0;          // v7.9.5: スパイクカウンタもリセット
 }
 
 // 方角をマーカーのビーム要素 (transform: rotate) に反映する。
