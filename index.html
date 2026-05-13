@@ -465,14 +465,16 @@ body.has-fullscreen-map {
     animation: locate-spin 0.9s linear infinite, locate-pulse-cyan 1.4s ease-in-out infinite;
 }
 .map-controls #map-locate-toggle.is-tracking {
-    /* 追跡中: 緑で点灯。脈動で「動作中」を示す */
+    /* 追跡中: 緑で点灯。背景・影の同時明滅で「動作中」を明確に。
+       v7.9.3 改: 元の box-shadow 単独脈動は「ほんのり色がついている」程度で
+       目立たなかったため、背景色も含めて 1.6s 周期で明滅する強化版に。 */
     color: #34d399;             /* emerald-400 */
-    border-color: rgba(52, 211, 153, 0.55);
-    animation: locate-pulse-green 2.4s ease-in-out infinite;
+    border-color: rgba(52, 211, 153, 0.7);
+    animation: locate-pulse-green 1.6s ease-in-out infinite;
 }
 .map-controls #map-locate-toggle.is-tracking:hover {
-    background: rgba(52, 211, 153, 0.18);
-    box-shadow: 0 0 12px rgba(52, 211, 153, 0.5);
+    background: rgba(52, 211, 153, 0.25);
+    box-shadow: 0 0 16px rgba(52, 211, 153, 0.6);
 }
 .map-controls #map-locate-toggle.is-error {
     /* エラー状態: 赤で短時間明滅後、固定表示。再タップで再試行可能 */
@@ -504,40 +506,94 @@ body.has-fullscreen-map {
     50%      { box-shadow: 0 0 14px rgba(0, 242, 254, 0.7); }
 }
 @keyframes locate-pulse-green {
-    0%, 100% { box-shadow: 0 0 6px rgba(52, 211, 153, 0.25); }
-    50%      { box-shadow: 0 0 12px rgba(52, 211, 153, 0.55); }
+    /* v7.9.3 改: 背景色 + box-shadow + 文字色 の3要素を同時明滅。
+       OFF状態の暗背景 (rgba(8,14,28,0.85)) と 明状態の緑寄り背景 を行き来する。 */
+    0%, 100% {
+        background: rgba(8, 14, 28, 0.85);
+        box-shadow: 0 0 6px rgba(52, 211, 153, 0.25);
+        color: #34d399;
+    }
+    50% {
+        background: rgba(52, 211, 153, 0.35);
+        box-shadow: 0 0 18px rgba(52, 211, 153, 0.85);
+        color: #d1fae5;     /* emerald-100, ほぼ白に近い明るい緑 */
+    }
 }
 
-/* 現在地マーカー (Leaflet divIcon 内部の独自要素)。
-   既存の .itn-marker (橙の六角形) との色差で「自分」と「行程」を区別。
-   - 外側: 大きな脈動リング (装飾)
-   - 内側: 小六角形コア (位置を示す主役) */
+/* 現在地マーカー — 行程マーカー(六角形)と区別するため円形。
+   構造はすべて 40×40 のラッパーの中央 (20,20) に配置 (transform-origin: center)。
+   - .geo-dot:   中心の固体青点(7px)。位置そのものを示す
+   - .geo-pulse-wave x 2: 中心から外側へ広がる波紋(レーダー的)。
+                          0.7s 遅延の2本目で連続感を出す
+   - .geo-beam:  中心から扇形に伸びる方角ビーム(任意)。JS で
+                 transform: rotate(角度) を inline 設定する
+*/
 .geo-marker {
     position: relative;
-    width: 28px; height: 28px;
+    width: 40px; height: 40px;
 }
-.geo-marker .geo-core {
+.geo-marker .geo-dot {
     position: absolute;
-    inset: 8px;        /* 12px × 12px の中央コア */
+    top: 50%; left: 50%;
+    width: 8px; height: 8px;
+    transform: translate(-50%, -50%);
     background: #3b82f6;
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.85);
-    z-index: 2;
-}
-.geo-marker .geo-ring {
-    position: absolute;
-    inset: 0;
     border-radius: 50%;
-    background: rgba(59, 130, 246, 0.18);
     box-shadow:
-        inset 0 0 0 1px rgba(59, 130, 246, 0.5),
-        0 0 14px rgba(59, 130, 246, 0.4);
-    animation: geo-ring-pulse 2.2s ease-in-out infinite;
-    z-index: 1;
+        0 0 8px rgba(59, 130, 246, 0.95),
+        0 0 16px rgba(59, 130, 246, 0.5),
+        inset 0 0 0 1.5px rgba(255, 255, 255, 0.7);
+    z-index: 3;
 }
-@keyframes geo-ring-pulse {
-    0%, 100% { transform: scale(1);    opacity: 0.7; }
-    50%      { transform: scale(1.35); opacity: 0.35; }
+.geo-marker .geo-pulse-wave {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 14px; height: 14px;
+    transform: translate(-50%, -50%) scale(0);
+    border: 2px solid rgba(59, 130, 246, 0.85);
+    border-radius: 50%;
+    opacity: 0;
+    animation: geo-wave 2.4s ease-out infinite;
+    z-index: 2;
+    pointer-events: none;
+}
+.geo-marker .geo-pulse-wave-2 {
+    animation-delay: 1.2s;     /* 2本目は半周期ずらして連続感 */
+}
+@keyframes geo-wave {
+    0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0.95; }
+    80%  { opacity: 0.15; }
+    100% { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
+}
+/* 方角ビーム — 中心から扇形(60度幅)に伸びる半透明青。
+   conic-gradient で「中心から放射状に60度だけ色を塗る」を表現。
+   transform: rotate() を JS が inline で設定して回す。
+   方角不明時は display: none (JS が制御)。 */
+.geo-marker .geo-beam {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 56px; height: 56px;
+    transform: translate(-50%, -50%) rotate(0deg);
+    transform-origin: center;
+    /* 北 (-30度 から +30度) を青で塗る扇形。
+       transform: rotate で実際の方角に向ける。 */
+    background: conic-gradient(
+        from -30deg,
+        rgba(59, 130, 246, 0.45) 0deg,
+        rgba(59, 130, 246, 0.15) 30deg,
+        transparent 60deg,
+        transparent 360deg
+    );
+    border-radius: 50%;
+    mask: radial-gradient(circle, transparent 4px, black 6px, black 100%);
+    -webkit-mask: radial-gradient(circle, transparent 4px, black 6px, black 100%);
+    transition: transform 0.3s ease-out;
+    z-index: 1;
+    pointer-events: none;
+    display: none;     /* JS が方角取得成功時に block に */
+}
+.geo-marker.has-heading .geo-beam {
+    display: block;
 }
 
 /* 精度リング — Leaflet の L.circle で実描画される(物理メートル半径)。
@@ -2804,6 +2860,8 @@ let __geoWatchId = null;       // watchPosition の ID。null = 追跡停止中
 let __geoMarker = null;        // L.marker (青の脈動コア)
 let __geoAccCircle = null;     // L.circle (物理メートル半径の精度円)
 let __geoFirstFix = true;      // 初回 fix で地図を pan するためのフラグ
+let __geoHeading = null;       // 現在の方角(度、北=0、東=90)。null = 取得できない
+let __geoOrientHandler = null; // deviceorientation イベントハンドラ参照(停止時に外す)
 
 function geoToast(message, isError = false, duration = 3000) {
     // 既存のトーストがあれば消す
@@ -2852,6 +2910,74 @@ function startGeoTracking() {
         onGeoError,
         { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
+    // 方角取得を並行開始 (失敗してもメインの追跡は影響を受けない)
+    startGeoHeading();
+}
+
+// v7.9.3: 方角 (デバイスのコンパス向き) を取得して、マーカーのビームを回す。
+// 二つの API があり、対応状況がプラットフォームで異なる:
+//   - iOS Safari: DeviceOrientationEvent.requestPermission() で許可必須、
+//                 event.webkitCompassHeading (時計回り、北=0) が真北
+//   - Android Chrome: 許可不要、event.alpha (反時計回り、上が北) を使う
+//   - PC: ほぼ全滅 (磁気センサーがない) → 失敗で OK
+function startGeoHeading() {
+    if (typeof DeviceOrientationEvent === 'undefined') return;
+
+    const attach = () => {
+        __geoOrientHandler = (e) => {
+            // iOS 系: webkitCompassHeading (時計回り、北=0、東=90)
+            // Android 系: alpha (反時計回り、北=0)、true=絶対方位
+            let heading = null;
+            if (typeof e.webkitCompassHeading === 'number') {
+                heading = e.webkitCompassHeading;
+            } else if (typeof e.alpha === 'number' && e.absolute) {
+                heading = (360 - e.alpha) % 360;
+            }
+            if (heading == null || isNaN(heading)) return;
+            __geoHeading = heading;
+            applyGeoHeading();
+        };
+        // iOS 13+ は deviceorientationabsolute を提供、Android は deviceorientation で absolute フラグ
+        window.addEventListener('deviceorientationabsolute', __geoOrientHandler, true);
+        window.addEventListener('deviceorientation', __geoOrientHandler, true);
+    };
+
+    // iOS は許可リクエストが必要
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(state => {
+                if (state === 'granted') attach();
+                // 拒否は無視 (方角なしのまま動く)
+            })
+            .catch(() => { /* 無視 */ });
+    } else {
+        // Android / PC: 即時 attach (PC は値が来ないだけ)
+        attach();
+    }
+}
+
+function stopGeoHeading() {
+    if (__geoOrientHandler) {
+        window.removeEventListener('deviceorientationabsolute', __geoOrientHandler, true);
+        window.removeEventListener('deviceorientation', __geoOrientHandler, true);
+        __geoOrientHandler = null;
+    }
+    __geoHeading = null;
+}
+
+// 方角をマーカーのビーム要素 (transform: rotate) に反映する。
+// マーカーが描画される前に方角だけ先に来ることもあるので、要素の存在をチェック。
+function applyGeoHeading() {
+    if (!__geoMarker || __geoHeading == null) return;
+    const el = __geoMarker.getElement();
+    if (!el) return;
+    const inner = el.querySelector('.geo-marker');
+    if (!inner) return;
+    inner.classList.add('has-heading');
+    const beam = inner.querySelector('.geo-beam');
+    if (beam) {
+        beam.style.transform = `translate(-50%, -50%) rotate(${__geoHeading}deg)`;
+    }
 }
 
 function stopGeoTracking() {
@@ -2859,6 +2985,7 @@ function stopGeoTracking() {
         navigator.geolocation.clearWatch(__geoWatchId);
         __geoWatchId = null;
     }
+    stopGeoHeading();
     if (__geoMarker && __leafletMap) {
         __leafletMap.removeLayer(__geoMarker);
         __geoMarker = null;
@@ -2876,13 +3003,26 @@ function onGeoPosition(pos) {
     setGeoButtonState('tracking');
     const latlng = [latitude, longitude];
 
-    // マーカー本体(青の脈動六角形)
+    // マーカー本体(同心円+パルス波紋+方角ビーム)
     if (!__geoMarker) {
+        // v7.9.3 改: 行程マーカー(六角形)との混同を避けるため、円形に変更。
+        // 構造:
+        //   .geo-beam (任意, 方角があるとき): 中心から伸びる半透明扇形 (60度開き)
+        //   .geo-pulse-wave x 2: 中心から外側へ広がる波紋アニメ (生存信号)
+        //   .geo-dot: 中心の青い小点 (現在地そのもの)
+        // マーカーは方角に合わせて回転するため、CSS transform で扱う。
         const icon = L.divIcon({
             className: 'geo-marker-wrap',
-            html: '<div class="geo-marker"><div class="geo-ring"></div><div class="geo-core"></div></div>',
-            iconSize: [28, 28],
-            iconAnchor: [14, 14]
+            html: `
+                <div class="geo-marker" id="geo-marker-inner">
+                    <div class="geo-beam"></div>
+                    <div class="geo-pulse-wave"></div>
+                    <div class="geo-pulse-wave geo-pulse-wave-2"></div>
+                    <div class="geo-dot"></div>
+                </div>
+            `,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
         });
         __geoMarker = L.marker(latlng, { icon, interactive: false }).addTo(__leafletMap);
     } else {
@@ -2916,6 +3056,9 @@ function onGeoPosition(pos) {
         const accStr = accuracy < 1000 ? `±${Math.round(accuracy)}m` : `±${(accuracy / 1000).toFixed(1)}km`;
         geoToast(`Position acquired · ${accStr}`, false, 3000);
     }
+
+    // v7.9.3: 既知の方角があればビームに反映 (マーカーが今作られた直後でも届く)。
+    applyGeoHeading();
 }
 
 function onGeoError(err) {
