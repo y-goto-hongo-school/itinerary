@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard v7.9.9</title>
+<title>ITINERARY — Premium Travel Dashboard v7.9.10</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -572,7 +572,11 @@ body.has-fullscreen-map {
 .geo-marker .geo-beam {
     position: absolute;
     top: 50%; left: 50%;
-    width: 56px; height: 56px;
+    /* v7.9.10: ビームの長さを 56px → 72px に拡大(リクエストにより)。
+       中心からの先端距離 28px → 36px に伸び、視認性が向上する。
+       mask の抜き穴(中央の透明領域)も比例して 4-6px → 5-7px に拡大し、
+       中心の青ドットがビームに埋もれないよう調整。 */
+    width: 72px; height: 72px;
     transform: translate(-50%, -50%) rotate(0deg);
     transform-origin: center;
     /* v7.9.9: ビームの扇形を「視覚的にも幾何的にも真北中心」になるよう設計し直し。
@@ -597,8 +601,9 @@ body.has-fullscreen-map {
         transparent 360deg
     );
     border-radius: 50%;
-    mask: radial-gradient(circle, transparent 4px, black 6px, black 100%);
-    -webkit-mask: radial-gradient(circle, transparent 4px, black 6px, black 100%);
+    /* v7.9.10: ビーム拡大に伴い、中央の抜き穴も比例拡大(4→5, 6→7) */
+    mask: radial-gradient(circle, transparent 5px, black 7px, black 100%);
+    -webkit-mask: radial-gradient(circle, transparent 5px, black 7px, black 100%);
     transition: transform 0.3s ease-out;
     z-index: 1;
     pointer-events: none;
