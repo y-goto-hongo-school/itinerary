@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-<title>ITINERARY — Premium Travel Dashboard v7.9.10</title>
+<title>ITINERARY — Premium Travel Dashboard v8.0.0</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -1955,6 +1955,506 @@ body.has-fullscreen-map {
     background: rgba(255, 107, 107, 0.15);
 }
 
+/* v8.0.0: 3択ダイアログ (Save & Continue / Discard & Continue / Cancel) 用追加スタイル.
+   既存 .confirm-box の構造を流用、.ck-actions のフレックスを wrap 可能に. */
+.confirm-box .ck-actions.ck-actions-3 {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.confirm-box button.success {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+}
+.confirm-box button.success:hover {
+    background: rgba(74, 222, 128, 0.12);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   v8.0.1: イベント詳細表示モーダル & 編集モーダル
+   ────────────────────────────────────────────────────────────────
+   設計編 §5.2-B に従い、中央フェードイン + scale 0.95→1。
+   既存 .confirm-overlay の語彙を継承しつつ、コンテンツ領域は
+   ops-panel のグラスカード/セクター/フィールドの語彙で構築する。
+   z-index: 220 (confirm-overlay=200 より上、ただしカード編集中の
+   危険な選択肢を出す ckConfirm/ckConfirm3 はさらに上に乗る必要あり
+   → ckConfirm 系は 300 へ引き上げる)。
+   ════════════════════════════════════════════════════════════════ */
+
+/* z-index 階層を再整理 (本セクションで confirm 系を 300 系に引き上げる) */
+.confirm-overlay { z-index: 300; }
+
+.evt-modal {
+    position: fixed; inset: 0;
+    background: rgba(2, 4, 10, 0.55);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    z-index: 220;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.22s, visibility 0s linear 0.22s;
+}
+.evt-modal.active {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.22s;
+}
+.evt-modal-box {
+    width: 100%;
+    max-width: 520px;
+    max-height: calc(100vh - 48px);
+    background: rgba(8, 14, 28, 0.95);
+    border: 1px solid rgba(0, 242, 254, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 0 60px rgba(0, 242, 254, 0.18),
+                inset 0 0 50px rgba(0, 242, 254, 0.03);
+    transform: scale(0.95);
+    transition: transform 0.22s;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+.evt-modal.active .evt-modal-box { transform: scale(1); }
+/* 上端の発光ライン (ops-panel::before の横版) */
+.evt-modal-box::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    box-shadow: 0 0 16px var(--accent-cyan);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* ヘッダー */
+.evt-modal-header {
+    padding: 18px 22px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(0, 242, 254, 0.08);
+    flex-shrink: 0;
+}
+.evt-modal-title {
+    font-family: var(--text-display);
+    font-size: 0.85rem;
+    letter-spacing: 0.4em;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    text-shadow: 0 0 16px rgba(0, 242, 254, 0.4);
+    font-weight: 500;
+    line-height: 1.2;
+}
+.evt-modal-close {
+    background: rgba(0, 242, 254, 0.04);
+    border: 1px solid rgba(0, 242, 254, 0.2);
+    color: rgba(0, 242, 254, 0.7);
+    font-family: var(--text-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.25em;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+.evt-modal-close:hover {
+    opacity: 1;
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+    background: rgba(0, 242, 254, 0.1);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
+}
+
+/* ボディ (スクロール領域) */
+.evt-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 22px 18px;
+    min-height: 0;
+}
+
+/* フッター (操作ボタン群) */
+.evt-modal-footer {
+    padding: 14px 22px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(0, 242, 254, 0.08);
+    flex-shrink: 0;
+}
+.evt-modal-footer .spacer { flex: 1; }
+.evt-modal-footer button {
+    padding: 8px 14px;
+    background: transparent;
+    border: 1px solid rgba(226, 232, 240, 0.3);
+    color: rgba(226, 232, 240, 0.85);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 4px;
+}
+.evt-modal-footer button:hover {
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.15);
+}
+.evt-modal-footer button.primary {
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+}
+.evt-modal-footer button.primary:hover {
+    background: rgba(0, 242, 254, 0.1);
+}
+.evt-modal-footer button.danger {
+    color: rgba(255, 107, 107, 0.85);
+    border-color: rgba(255, 107, 107, 0.4);
+}
+.evt-modal-footer button.danger:hover {
+    color: var(--accent-warning);
+    border-color: var(--accent-warning);
+    background: rgba(255, 107, 107, 0.08);
+    box-shadow: 0 0 12px rgba(255, 107, 107, 0.15);
+}
+.evt-modal-footer button.icon-only {
+    padding: 8px 10px;
+    font-size: 13px;
+    letter-spacing: 0;
+}
+
+/* ──── 詳細表示モーダル内のレイアウト ──── */
+.evt-detail-hex {
+    /* 六角形 + ネームプレート (renderEventCard と同じ造形) を縮小して表示 */
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+.evt-detail-hex .tl-hex-wrap {
+    /* 既存 .tl-hex-wrap のスタイルを使うが、絶対余白だけ調整 */
+    width: 50px;
+}
+.evt-detail-title-block {
+    flex: 1;
+    min-width: 0;
+}
+.evt-detail-name {
+    font-family: var(--text-display);
+    font-size: 15px;
+    color: #f1f5f9;
+    line-height: 1.3;
+    word-break: break-word;
+}
+.evt-detail-time {
+    font-family: var(--text-mono);
+    font-size: 12px;
+    color: rgba(0, 242, 254, 0.85);
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+}
+.evt-detail-time .arrow { color: rgba(0, 242, 254, 0.5); margin: 0 4px; }
+
+.evt-detail-section {
+    font-family: var(--text-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.28em;
+    color: rgba(0, 242, 254, 0.5);
+    text-transform: uppercase;
+    margin: 18px 0 8px;
+}
+.evt-detail-grid {
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    column-gap: 12px;
+    row-gap: 6px;
+    font-size: 13px;
+}
+.evt-detail-grid .k {
+    font-family: var(--text-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(0, 242, 254, 0.55);
+    text-transform: uppercase;
+    padding-top: 2px;
+}
+.evt-detail-grid .v {
+    color: rgba(226, 232, 240, 0.92);
+    word-break: break-word;
+    line-height: 1.45;
+}
+.evt-detail-grid .v a {
+    color: var(--accent-cyan);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(0, 242, 254, 0.5);
+}
+.evt-detail-notes {
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: rgba(0, 242, 254, 0.04);
+    border-left: 2px solid rgba(0, 242, 254, 0.35);
+    border-radius: 4px;
+    font-size: 13px;
+    color: rgba(226, 232, 240, 0.9);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.evt-detail-status-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    border-radius: 3px;
+    vertical-align: middle;
+}
+.evt-detail-status-badge.tentative {
+    color: var(--accent-warm);
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    background: rgba(251, 191, 36, 0.06);
+}
+.evt-detail-status-badge.placeholder {
+    color: rgba(148, 163, 184, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    background: rgba(148, 163, 184, 0.06);
+}
+
+/* ──── 編集フォームの要素 ──── */
+.evt-form-section {
+    font-family: var(--text-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.28em;
+    color: rgba(0, 242, 254, 0.5);
+    text-transform: uppercase;
+    margin: 16px 0 8px;
+}
+.evt-form-section:first-child { margin-top: 0; }
+.evt-form-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.evt-form-field {
+    flex: 1;
+    min-width: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.evt-form-field.full { flex-basis: 100%; }
+.evt-form-field label {
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: rgba(0, 242, 254, 0.55);
+    text-transform: uppercase;
+}
+.evt-form-field input,
+.evt-form-field select,
+.evt-form-field textarea {
+    width: 100%;
+    background: rgba(0, 12, 24, 0.6);
+    border: 1px solid rgba(0, 242, 254, 0.2);
+    color: #e2e8f0;
+    font-family: var(--text-body);
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    line-height: 1.4;
+}
+.evt-form-field input[type="time"],
+.evt-form-field input[type="number"] {
+    font-family: var(--text-mono);
+    font-variant-numeric: tabular-nums;
+}
+.evt-form-field input:focus,
+.evt-form-field select:focus,
+.evt-form-field textarea:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
+    background: rgba(0, 18, 36, 0.75);
+}
+.evt-form-field textarea {
+    resize: vertical;
+    min-height: 60px;
+    font-family: var(--text-body);
+}
+/* 座標フィールド (lat, lon の2セル横並び) */
+.evt-form-coord {
+    display: flex;
+    gap: 6px;
+}
+.evt-form-coord input {
+    flex: 1;
+    font-family: var(--text-mono);
+    font-variant-numeric: tabular-nums;
+}
+/* fare の amount + currency 横並び */
+.evt-form-fare {
+    display: flex;
+    gap: 6px;
+}
+.evt-form-fare input { flex: 2; }
+.evt-form-fare select { flex: 1; min-width: 0; }
+
+/* セレクトの▼ */
+.evt-form-field select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, rgba(0, 242, 254, 0.7) 50%),
+                      linear-gradient(135deg, rgba(0, 242, 254, 0.7) 50%, transparent 50%);
+    background-position: calc(100% - 14px) center, calc(100% - 9px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 28px;
+}
+
+/* ──── Type 選択モーダル (新規追加時) ──── */
+.evt-typesel-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.evt-typesel-grid button {
+    padding: 14px 12px;
+    background: var(--card-glass);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    color: rgba(226, 232, 240, 0.92);
+    font-family: var(--text-mono);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+.evt-typesel-grid button .icon {
+    font-size: 20px;
+    line-height: 1;
+}
+.evt-typesel-grid button:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    background: var(--card-glass-hover);
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.15);
+    transform: translateY(-1px);
+}
+
+/* ──── ADD EVENT ボタン (DAY 末尾) ──── */
+.tl-add-event {
+    margin: 8px 0 4px;
+    padding: 12px 14px;
+    background: rgba(0, 242, 254, 0.03);
+    border: 1px dashed rgba(0, 242, 254, 0.3);
+    color: rgba(0, 242, 254, 0.75);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s;
+    /* spine と重ならないよう、左マージンを六角形分(56px)+8px くらいずらす */
+    margin-left: 64px;
+    width: calc(100% - 64px);
+}
+.tl-add-event:hover {
+    background: rgba(0, 242, 254, 0.08);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.15);
+}
+.tl-add-event .plus {
+    display: inline-block;
+    margin-right: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+/* ──── status: tentative / placeholder のカード見た目 ──── */
+/* tentative: 暗くしすぎず、薄い縞模様で「未確定」を示す */
+.tl-item.status-tentative .tl-card {
+    opacity: 0.78;
+}
+.tl-item.status-tentative .tl-card::after {
+    content: 'TENTATIVE';
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-family: var(--text-mono);
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: var(--accent-warm);
+    opacity: 0.7;
+    pointer-events: none;
+}
+/* placeholder: もっと薄く、点線枠で「枠だけ」感を出す */
+.tl-item.status-placeholder .tl-card {
+    opacity: 0.55;
+    border-style: dashed;
+    border-color: rgba(148, 163, 184, 0.4);
+}
+.tl-item.status-placeholder .tl-card:hover {
+    opacity: 0.85;
+}
+.tl-item.status-placeholder .tl-hex,
+.tl-item.status-placeholder .hex-tag {
+    filter: brightness(0.7);
+}
+
+/* v8.0.1: 六角形(ピン)はタップで地図 pan するため pointer cursor を明示.
+   役割分担: 六角形 = 地図上のピン操作、カード = 詳細表示モーダルへ */
+.tl-hex-wrap { cursor: pointer; }
+.tl-hex-wrap:hover .tl-hex {
+    /* 軽い拡大で「押せる」感を出す */
+    transform: scale(1.05);
+    transition: transform 0.15s;
+}
+
+/* モバイル対応 */
+@media (max-width: 600px) {
+    .evt-modal { padding: 12px 10px; }
+    .evt-modal-box { max-height: calc(100vh - 24px); border-radius: 10px; }
+    .evt-modal-header { padding: 14px 16px 12px; }
+    .evt-modal-title { font-size: 0.75rem; letter-spacing: 0.32em; }
+    .evt-modal-body { padding: 14px 16px 16px; }
+    .evt-modal-footer { padding: 12px 16px; gap: 6px; }
+    .evt-modal-footer button { padding: 7px 10px; font-size: 10px; letter-spacing: 0.15em; }
+    .evt-form-row { gap: 8px; }
+    .evt-form-field { min-width: 100px; }
+    .evt-detail-grid { grid-template-columns: 76px 1fr; column-gap: 10px; }
+    .tl-add-event {
+        margin-left: 56px;
+        width: calc(100% - 56px);
+        font-size: 10.5px;
+        letter-spacing: 0.2em;
+        padding: 10px 12px;
+    }
+}
+
 /* ──────────── MOBILE ──────────── */
 @media (max-width: 600px) {
     .modal-stage { padding: 20px 14px 60px; }
@@ -2145,7 +2645,7 @@ body.has-fullscreen-map {
          (modal-stage の overflow/transform の影響を避けるため、
           ファイル末尾 </body> 直前に配置)。
          ファイル input だけは form 不要の不可視要素なのでここに残す。 -->
-    <input type="file" id="file-input" class="file-input" accept=".json,.itn.json,application/json">
+    <input type="file" id="file-input" class="file-input" accept=".json,.trip.json,.itn.json,application/json">
 
     <!-- CLOSE -->
     <div class="close-section">
@@ -2168,6 +2668,78 @@ body.has-fullscreen-map {
         <div class="ck-actions">
             <button id="confirm-cancel">Cancel</button>
             <button id="confirm-ok" class="primary">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.0: 破壊的操作前の「保存して進む / 保存せず進む / キャンセル」3択ダイアログ.
+     HANDOVER §3-8 に基づく. 既存 confirm-overlay とは独立に動作させ、
+     2択利用箇所への副作用を避ける. -->
+<div class="confirm-overlay" id="confirm3-overlay">
+    <div class="confirm-box">
+        <div class="ck-msg" id="confirm3-msg">—</div>
+        <div class="ck-actions ck-actions-3">
+            <button id="confirm3-cancel">Cancel</button>
+            <button id="confirm3-discard">Discard &amp; Continue</button>
+            <button id="confirm3-save" class="success">Save &amp; Continue</button>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.1: イベント詳細表示モーダル (read-only)
+     カードタップで開き、EDIT ボタンで編集モーダルに遷移する. -->
+<div class="evt-modal" id="evt-detail-modal" role="dialog" aria-modal="true" aria-labelledby="evt-detail-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="evt-detail-title">EVENT</div>
+            <button class="evt-modal-close" id="evt-detail-close">CLOSE</button>
+        </div>
+        <div class="evt-modal-body" id="evt-detail-body">
+            <!-- JS で動的に描画 -->
+        </div>
+        <div class="evt-modal-footer">
+            <button class="danger" id="evt-detail-delete">🗑 Delete</button>
+            <button class="icon-only" id="evt-detail-up" title="Move up">▲</button>
+            <button class="icon-only" id="evt-detail-down" title="Move down">▼</button>
+            <div class="spacer"></div>
+            <button class="primary" id="evt-detail-edit">✎ Edit</button>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.1: イベント編集モーダル (新規追加 / 編集 共通)
+     evt-edit-mode で 'create' | 'edit' を切替. -->
+<div class="evt-modal" id="evt-edit-modal" role="dialog" aria-modal="true" aria-labelledby="evt-edit-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="evt-edit-title">EDIT EVENT</div>
+            <button class="evt-modal-close" id="evt-edit-close">CANCEL</button>
+        </div>
+        <div class="evt-modal-body" id="evt-edit-body">
+            <!-- JS で動的にフォームを描画 -->
+        </div>
+        <div class="evt-modal-footer">
+            <button id="evt-edit-cancel">Cancel</button>
+            <button class="primary" id="evt-edit-save">💾 Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.1: 新規イベント追加時の type 選択モーダル -->
+<div class="evt-modal" id="evt-typesel-modal" role="dialog" aria-modal="true" aria-labelledby="evt-typesel-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="evt-typesel-title">ADD EVENT</div>
+            <button class="evt-modal-close" id="evt-typesel-close">CANCEL</button>
+        </div>
+        <div class="evt-modal-body">
+            <div class="evt-typesel-grid">
+                <button data-type="transport"><span class="icon">✈</span>Transport</button>
+                <button data-type="place"><span class="icon">📍</span>Place</button>
+                <button data-type="lodging"><span class="icon">🛏</span>Lodging</button>
+                <button data-type="free"><span class="icon">◌</span>Free Time</button>
+                <button data-type="event"><span class="icon">◇</span>Event</button>
+            </div>
         </div>
     </div>
 </div>
@@ -2239,12 +2811,20 @@ function categoryClass(cat) {
 //                     ルートは from / to が自動で表示するため routeName は便名/種別専用。
 //   from/to   - 出発地/到着地 (name, coord, time, tz)。表示の主体はこちら。
 //
-const SAMPLE_ITN = {
-    format: "itn-v1",
+// v8.0.0: state.itn → state.trip 改名 (HANDOVER §5-F)
+// format も 'itn-v1' → 'trip-v1'、ファイル拡張子も .itn.json → .trip.json に変更。
+// 互換性: Import 時のみ 'itn-v1' を受け入れ、内部で 'trip-v1' に正規化する。
+const SAMPLE_TRIP = {
+    format: "trip-v1",
     meta: {
         title: "Vancouver Language Program 2026",
         subtitle: "Canada Study Tour",
         operator: "GPI North America",
+        // v8.0.0: HANDOVER §4.1 に従い origin/dest フィールドを追加
+        origin: "Tokyo",
+        originAirport: "HND",
+        dest: "Vancouver",
+        destAirport: "",
         startDate: "2026-07-20",
         endDate: "2026-08-04",
         homeTimezone: "Asia/Tokyo",
@@ -2387,11 +2967,116 @@ const SAMPLE_ITN = {
 };
 
 // ──────────────── ステート ────────────────
+// v8.0.0: state.itn → state.trip 改名 (HANDOVER §5-F)
 let state = {
-    itn: null,
+    trip: null,
     selectedDayIdx: 0,
     numByEventIdx: new Map()  // eventIdx → {num, color} 地図のグルーピング結果
 };
+
+// ──────────────── v8.0.0: ストレージ抽象化レイヤー (HANDOVER §4.5) ────────────────
+// 設計意図:
+//   - 4関数 (load / save / list / delete) すべて async で定義
+//   - 現状は localStorage 実装。将来はサーバー API への差し替えのみで済む
+//   - 呼び出し側は実装詳細を知らない (storage.load(key) のみ知る)
+//
+// キー設計 (HANDOVER §4.5):
+//   - 'trip:current'       : 現在アクティブな trip データ (JSON 文字列)
+//   - 'trip:lastModified'  : 最終更新時刻 (将来の同期判定用、Date.now() ベース)
+//
+// エラー方針:
+//   - load: 読めない/壊れている時は null を返す。例外は投げない (起動時の汚染対策)
+//   - save: localStorage 容量超過などは throw。呼び出し側で catch する
+//   - delete/list: 存在しないキーでも例外を投げない
+const storage = {
+    async load(key) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw === null) return null;
+            // 値は JSON 化されている前提。素のテキストが欲しければ別ルートで。
+            return JSON.parse(raw);
+        } catch (_) {
+            // パース失敗(古い形式の混入や手動編集の事故)は null 扱い
+            return null;
+        }
+    },
+    async save(key, value) {
+        // 例外はそのまま伝播 (容量超過・プライベートモードなど)
+        localStorage.setItem(key, JSON.stringify(value));
+    },
+    async list(prefix) {
+        const keys = [];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && (!prefix || k.startsWith(prefix))) keys.push(k);
+            }
+        } catch (_) {}
+        return keys;
+    },
+    async delete(key) {
+        try { localStorage.removeItem(key); } catch (_) {}
+    }
+};
+// ストレージキー (中央定義)
+const STORAGE_KEYS = {
+    TRIP_CURRENT: 'trip:current',
+    TRIP_LAST_MODIFIED: 'trip:lastModified'
+};
+
+// ──────────────── v8.0.0: スキーマ正規化 (互換マイグレーション) ────────────────
+// 旧 .itn.json (format: 'itn-v1') を読み込む際、新スキーマ (HANDOVER §4) に正規化する。
+// 既存 SAMPLE_TRIP の events や、ユーザーがディスクに保存していた古いファイルを
+// 安全に取り込めるようにする。
+//
+// 正規化内容:
+//   - format: 'itn-v1' → 'trip-v1'
+//   - meta.origin / dest が欠けていれば空文字で補う (UI 側で表示判定する)
+//   - 各 event に status が無ければ 'confirmed' を付与
+//
+// 「破壊的でない」変換だけを行う。意味の解釈はしない。
+function normalizeTrip(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (!Array.isArray(raw.days)) return null;
+    // format: itn-v1 と trip-v1 の両方を受け入れる (Export は常に trip-v1)
+    const fmt = raw.format;
+    if (fmt !== 'trip-v1' && fmt !== 'itn-v1') return null;
+    // 浅いクローン経由で正規化 (元オブジェクトを汚さない)
+    const meta = Object.assign({
+        title: '', subtitle: '', operator: '',
+        origin: '', originAirport: '',
+        dest: '', destAirport: '',
+        startDate: '', endDate: '',
+        homeTimezone: '', destTimezone: ''
+    }, raw.meta || {});
+    const days = raw.days.map(d => ({
+        date: d.date || '',
+        dayLabel: d.dayLabel || '',
+        summary: d.summary || '',
+        events: (d.events || []).map(ev => {
+            // status が無ければ confirmed 扱い (旧スキーマ互換)
+            if (!ev.status) {
+                return Object.assign({ status: 'confirmed' }, ev);
+            }
+            return ev;
+        })
+    }));
+    return { format: 'trip-v1', meta, days };
+}
+
+// state.trip を localStorage に永続化する。
+// 失敗しても UI は止めない (容量超過の場合などは Toast 通知のみ)。
+async function persistTrip() {
+    if (!state.trip) return;
+    try {
+        await storage.save(STORAGE_KEYS.TRIP_CURRENT, state.trip);
+        await storage.save(STORAGE_KEYS.TRIP_LAST_MODIFIED, Date.now());
+    } catch (e) {
+        console.error('[persistTrip] failed:', e);
+        // 既存 Toast を使うが、UX を妨げないよう簡素に
+        showToast('Save failed (storage full?)', true);
+    }
+}
 
 // ──────────────── ユーティリティ ────────────────
 function $(sel) { return document.querySelector(sel); }
@@ -2557,6 +3242,60 @@ function ckConfirm(msg, opts = {}) {
     });
 }
 
+// v8.0.0: 3択ダイアログ (HANDOVER §3-8 「現在のファイルを保存しますか?」)
+//   戻り値: 'save' | 'discard' | 'cancel'
+//   ESC / 背景クリックは 'cancel' とみなす。
+//   破壊的操作 (Import / Template / Sample / Purge) の前に呼び出す。
+function ckConfirm3(msg, opts = {}) {
+    return new Promise(resolve => {
+        const ov = $('#confirm3-overlay');
+        $('#confirm3-msg').textContent = msg;
+        ov.classList.toggle('danger', !!opts.danger);
+        ov.classList.add('active');
+        const save = $('#confirm3-save');
+        const discard = $('#confirm3-discard');
+        const cancel = $('#confirm3-cancel');
+        save.textContent = opts.saveText || 'Save & Continue';
+        discard.textContent = opts.discardText || 'Discard & Continue';
+        cancel.textContent = opts.cancelText || 'Cancel';
+        function close(val) {
+            ov.classList.remove('active');
+            save.removeEventListener('click', onSave);
+            discard.removeEventListener('click', onDiscard);
+            cancel.removeEventListener('click', onCancel);
+            ov.removeEventListener('click', onBackdrop);
+            resolve(val);
+        }
+        function onSave()    { close('save'); }
+        function onDiscard() { close('discard'); }
+        function onCancel()  { close('cancel'); }
+        function onBackdrop(e) { if (e.target === ov) close('cancel'); }
+        save.addEventListener('click', onSave);
+        discard.addEventListener('click', onDiscard);
+        cancel.addEventListener('click', onCancel);
+        ov.addEventListener('click', onBackdrop);
+    });
+}
+
+// v8.0.0: 破壊的操作前の保存確認フロー共通ヘルパー (HANDOVER §3-8).
+//   - msg: ユーザーに見せる質問文
+//   - 戻り値: true なら破壊操作を続行してよい / false なら中止
+//   - 'save' が選ばれた場合は exportTrip() を呼んでから true を返す.
+//   - state.trip が無い (起動直後など) なら確認をスキップして true を返す.
+async function confirmDestructive(msg) {
+    if (!state.trip) return true; // データ無しなら確認不要
+    const choice = await ckConfirm3(msg);
+    if (choice === 'cancel') return false;
+    if (choice === 'save') {
+        // Export はブラウザのダウンロード機構を使うのでブロックしない.
+        // ユーザーが保存ダイアログをキャンセルしても検知不可能なため、
+        // ここで成功/失敗を判定できない. ただし「保存意思を示した」事実を
+        // 尊重して破壊操作は続行する (UX の単純さを優先).
+        try { exportTrip(); } catch (_) {}
+    }
+    return true;
+}
+
 // ──────────────── イベントの便利アクセサ ────────────────
 function eventCategory(ev) {
     if (ev.type === 'place')     return ev.category || 'other';
@@ -2590,22 +3329,34 @@ function eventCoords(ev) {
 }
 
 // ──────────────── データロード ────────────────
-function loadItn(itn) {
-    if (!itn || !Array.isArray(itn.days)) {
+// v8.0.0: loadItn → loadTrip 改名 + スキーマ正規化 + 永続化フック追加
+function loadTrip(rawTrip, opts = {}) {
+    // opts.persist: ロード後に localStorage 保存するか (default: true)
+    //   - false にするのは「localStorage から読んだ直後」のみ (= 自分が保存した値を再保存する意味は無い)
+    //
+    // 受け取った rawTrip は normalizeTrip で旧形式互換を吸収。
+    // 失敗すれば false を返してフォールバック処理を呼び出し側に委ねる。
+    const normalized = normalizeTrip(rawTrip);
+    if (!normalized) {
         showToast('Invalid itinerary file', true);
         return false;
     }
-    state.itn = itn;
-    state.selectedDayIdx = pickInitialDay(itn);
+    state.trip = normalized;
+    state.selectedDayIdx = pickInitialDay(normalized);
     renderAll();
+    // 既定で永続化する。明示的に false を指定された時のみスキップ。
+    if (opts.persist !== false) {
+        // 非同期だが、結果を待つ必要はない (Toast は内部で出す)
+        persistTrip();
+    }
     return true;
 }
-function pickInitialDay(itn) {
+function pickInitialDay(trip) {
     const t = todayIso();
-    const idx = itn.days.findIndex(d => d.date === t);
+    const idx = trip.days.findIndex(d => d.date === t);
     if (idx >= 0) return idx;
-    if (itn.days[0]?.date > t) return 0;
-    return itn.days.length - 1;
+    if (trip.days[0]?.date > t) return 0;
+    return trip.days.length - 1;
 }
 
 // ──────────────── レンダリング ────────────────
@@ -2616,7 +3367,7 @@ function renderAll() {
     drawMap();
 }
 function renderHeader() {
-    const m = state.itn.meta || {};
+    const m = state.trip.meta || {};
     $('#mission-subtitle').textContent = `${m.subtitle || ''}${m.title ? ' · ' + m.title : ''}`.trim();
     // v7.7: operator はヘッダーから削除済み。データは meta.operator に保持。
 }
@@ -2625,7 +3376,7 @@ function renderScrubber() {
     const wrap = $('#scrubber');
     wrap.innerHTML = '';
     const t = todayIso();
-    state.itn.days.forEach((d, i) => {
+    state.trip.days.forEach((d, i) => {
         const chip = document.createElement('div');
         chip.className = 'day-chip';
         if (i === state.selectedDayIdx) chip.classList.add('selected');
@@ -2648,8 +3399,29 @@ function renderScrubber() {
     if (sel) sel.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
 }
 
+// v8.0.1: 各 DAY の末尾に「+ ADD EVENT」ボタンを配置するヘルパー.
+//   タップで type 選択モーダルを開き、選ばれた type で新規編集モーダルへ.
+function appendAddEventButton(tl, dayIdx) {
+    const btn = document.createElement('div');
+    btn.className = 'tl-add-event';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('tabindex', '0');
+    btn.innerHTML = '<span class="plus">+</span>ADD EVENT';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openTypeSelModal(dayIdx);
+    });
+    btn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openTypeSelModal(dayIdx);
+        }
+    });
+    tl.appendChild(btn);
+}
+
 function renderDay() {
-    const d = state.itn.days[state.selectedDayIdx];
+    const d = state.trip.days[state.selectedDayIdx];
     if (!d) return;
     const t = todayIso();
     const dh = $('#day-header');
@@ -2661,11 +3433,16 @@ function renderDay() {
     tl.innerHTML = '';
     if (!d.events || d.events.length === 0) {
         tl.innerHTML = '<div class="empty-day">▾ NO EVENTS SCHEDULED — FREE DAY</div>';
+        // v8.0.1: 空の日でも ADD EVENT ボタンは出す
+        appendAddEventButton(tl, state.selectedDayIdx);
         return;
     }
     d.events.forEach((ev, evIdx) => {
         tl.appendChild(renderEventCard(ev, evIdx, d.date));
     });
+
+    // v8.0.1: 各 DAY の末尾に ADD EVENT ボタンを配置
+    appendAddEventButton(tl, state.selectedDayIdx);
 
     // v7-step3: タイムライン全体を流れる連続パルスを3本挿入。
     // v7-step4: CSS の :nth-of-type は他の div(tl-item)とインデックスが
@@ -2776,10 +3553,19 @@ function renderEventCard(ev, evIdx, dayDate) {
     // tl-item にクラスを付与する。CSS 側で見た目を切り替える。
     const status = eventStatus(ev, dayDate);
 
+    // v8.0.1: ev.status (confirmed / tentative / placeholder) もクラス化.
+    // 時刻ベースの status (past/now/future) とは独立に、見た目の薄字/枠線で表現する.
+    // confirmed は無印 (status-confirmed クラスは付けない)、tentative / placeholder は付ける.
+    const dataStatus = ev.status || 'confirmed';
+
     const item = document.createElement('div');
-    item.className = `tl-item cat-${cls} status-${status}`;
+    let extraStatusClass = '';
+    if (dataStatus === 'tentative') extraStatusClass = ' status-tentative';
+    else if (dataStatus === 'placeholder') extraStatusClass = ' status-placeholder';
+    item.className = `tl-item cat-${cls} status-${status}${extraStatusClass}`;
     item.dataset.eventIdx = evIdx;
     item.dataset.status = status;
+    item.dataset.dataStatus = dataStatus;
 
     // v7-step3: tl-pulse は .timeline 直下に3つだけ配置する設計に変更したため、
     // tl-item ごとの pulse 生成は廃止。renderDay() で .timeline 全体に
@@ -2832,6 +3618,20 @@ function renderEventCard(ev, evIdx, dayDate) {
         cardName = ev.name || ev.label || '—';
     }
 
+    // v8.0.1: placeholder 状態のカード名は "✈ TBD" のような簡略表示
+    // (設計編 §5-A / HANDOVER §5.2-5).
+    // 型ごとに区別:
+    //   transport → "✈ TBD" など mode のアイコン+TBD
+    //   place     → "📍 TBD"
+    //   lodging   → "🛏 TBD"
+    //   free      → "◌ TBD"
+    //   event     → "◇ TBD"
+    if (dataStatus === 'placeholder' && !cardName.replace(/—/g, '').trim()) {
+        cardName = `${def.icon} TBD`;
+    } else if (dataStatus === 'placeholder' && (cardName === '—' || cardName === def.label)) {
+        cardName = `${def.icon} TBD`;
+    }
+
     const timeHtml = startT
         ? `<span class="card-time">${escapeHtml(startT)}${endT ? `<span class="arrow">→</span><span class="end">${escapeHtml(endT)}</span>` : ''}</span>`
         : '';
@@ -2860,23 +3660,13 @@ function renderEventCard(ev, evIdx, dayDate) {
     }
     const badgesHtml = badges.length ? `<div class="card-row">${badges.join('')}</div>` : '';
 
-    const details = buildDetailRows(ev);
-    const hasDetails = details.rows.length > 0 || ev.notes;
-    const detailHtml = hasDetails ? `
-        <div class="detail">
-            <div class="detail-block">
-                ${details.rows.length ? `<div class="detail-grid">${details.rows.join('')}</div>` : ''}
-                ${ev.notes ? `<div class="notes">${escapeHtml(ev.notes)}</div>` : ''}
-            </div>
-        </div>
-    ` : '';
-    const expandHint = hasDetails ? `<span class="expand-hint">DETAIL</span>` : '';
+    // v8.0.1: 旧「詳細インライン展開」は廃止 (カードタップで詳細表示モーダルが開く方式に変更).
+    //   設計編 §5.1 (CHECKLIST と同じメンタルモデル) + ユーザー要望
+    //   「閲覧と編集の分離」(D 案) に基づく.
+    //   .detail / .expand-hint の DOM は生成しない. CSS 側の .detail/.expand-hint
+    //   ルールは旧データでも害がないので残置.
 
     // v7.9.1: 番号バッジを時刻と同じ行 (card-head 内) に配置する。
-    //   旧 v7.9 では右上 absolute だったが、ユーザー指摘で時刻と並列に「データ」
-    //   として扱う方が計器盤的に自然と判断。card-head は flex 行となり、
-    //   左に時刻、右に番号(updateCardNumBadges() が挿入)が並ぶ。
-    //   "21:00 → 22:00    02" のような表示で、視線が左→右に流れる。
     card.innerHTML = `
         <div class="card-head">
             ${timeHtml}
@@ -2884,29 +3674,23 @@ function renderEventCard(ev, evIdx, dayDate) {
         <div class="card-name">${escapeHtml(cardName)}</div>
         ${metaHtml}
         ${badgesHtml}
-        ${detailHtml}
-        ${expandHint}
     `;
-    if (hasDetails) {
-        card.addEventListener('click', (e) => {
-            // 詳細展開
-            card.classList.toggle('expanded');
-            // v7.9.2 (バグ修正B): 展開で .timeline 高さが変わる。
-            // .detail の transition は 0.32s ease なので、完了相当のタイミングで spine 再測定。
-            // 念のため transition 中(150ms)と完了後(350ms, 600ms)の3回測定し、
-            // どこかで正しい値に確定させる。
-            if (typeof window.__measureSpine === 'function') {
-                setTimeout(window.__measureSpine, 150);
-                setTimeout(window.__measureSpine, 350);
-                setTimeout(window.__measureSpine, 600);
-            }
-        });
-    }
-    // カードクリック(展開トグルとは別の場所:時刻部分など)で
-    // 地図側を該当マーカーに pan + フォーカス
-    item.addEventListener('click', (e) => {
-        // detail link(a要素)のクリックは透過
-        if (e.target.closest('a')) return;
+
+    // v8.0.1: カードタップ → 詳細表示モーダルを開く
+    //   (旧: 詳細インライン展開を toggle)
+    //   bubbling で item の地図 pan も発火するが、それは hex 側に移譲したので
+    //   ここでは stopPropagation して二重発火を防ぐ.
+    card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDetailModal(state.selectedDayIdx, evIdx);
+    });
+
+    // v8.0.1: 六角形(ピン相当)タップで地図側にマーカーを pan + フォーカス.
+    //   旧設計では item 全体に click を貼って地図 pan していたが、
+    //   カードタップが詳細モーダル起動に変わったため、地図操作は六角形側に移動.
+    //   「六角形 = 地図上のピンの計器盤表現」というメンタルモデルが明確化する.
+    hexWrap.addEventListener('click', (e) => {
+        e.stopPropagation();
         const markers = __markerByEventIdx.get(evIdx);
         if (markers && markers.length > 0 && __leafletMap) {
             const m = markers[0];
@@ -2923,6 +3707,7 @@ function renderEventCard(ev, evIdx, dayDate) {
             if (el) el.classList.add('is-active');
         }
     });
+
     // マウスホバーで地図側マーカーを強調(双方向リンク)
     item.addEventListener('mouseenter', () => highlightMarker(evIdx, true));
     item.addEventListener('mouseleave', () => highlightMarker(evIdx, false));
@@ -3589,7 +4374,7 @@ function drawMap() {
     // eventIdx → {num, color} の対応もここで作る(カード番号バッジ用)
     state.numByEventIdx = new Map();
 
-    const day = state.itn.days[state.selectedDayIdx];
+    const day = state.trip.days[state.selectedDayIdx];
     if (!day) return;
 
     // その日のwaypoint一覧を作る:eventIdx + legも持たせて、双方向リンクできるようにする
@@ -3953,23 +4738,33 @@ document.addEventListener('fullscreenchange', __onFullscreenChange);
 document.addEventListener('webkitfullscreenchange', __onFullscreenChange);
 
 // ──────────────── アクション ────────────────
-function exportItn() {
-    const json = JSON.stringify(state.itn, null, 2);
+// v8.0.0: exportItn → exportTrip 改名
+function exportTrip() {
+    if (!state.trip) {
+        showToast('Nothing to export', true);
+        return;
+    }
+    const json = JSON.stringify(state.trip, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const safeName = (state.itn.meta?.title || 'itinerary').replace(/[^a-z0-9一-龥ぁ-んァ-ヴー\-_]/gi, '_').slice(0, 40);
+    const safeName = (state.trip.meta?.title || 'itinerary').replace(/[^a-z0-9一-龥ぁ-んァ-ヴー\-_]/gi, '_').slice(0, 40);
     a.href = url;
-    a.download = `${safeName}.itn.json`;
+    a.download = `${safeName}.trip.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('EXPORTED');
 }
-function importItn() { $('#file-input').click(); }
+// v8.0.0: importItn → importTrip 改名 + 破壊操作前の保存確認 (HANDOVER §3-8)
+async function importTrip() {
+    if (!await confirmDestructive('Importing will replace the current trip. Save the current file first?')) return;
+    $('#file-input').click();
+}
 async function loadTemplate() {
-    if (state.itn && !await ckConfirm('Discard the current itinerary and load a blank template?')) return;
+    // v8.0.0: 2択 ckConfirm から3択 confirmDestructive に変更
+    if (!await confirmDestructive('Loading a blank template will replace the current trip. Save the current file first?')) return;
     const today = new Date();
     const start = new Date(today.getTime() + 30*86400000);
     const days = [];
@@ -3982,28 +4777,882 @@ async function loadTemplate() {
             events: []
         });
     }
-    loadItn({
-        format: 'itn-v1',
-        meta: { title: 'New Trip', subtitle: '', operator: '', startDate: days[0].date, endDate: days[days.length-1].date, homeTimezone: 'Asia/Tokyo', destTimezone: 'UTC' },
+    loadTrip({
+        format: 'trip-v1',
+        meta: { title: 'New Trip', subtitle: '', operator: '',
+                origin: '', originAirport: '', dest: '', destAirport: '',
+                startDate: days[0].date, endDate: days[days.length-1].date,
+                homeTimezone: 'Asia/Tokyo', destTimezone: 'UTC' },
         days
     });
     showToast('TEMPLATE LOADED');
 }
 async function reloadSample() {
-    if (await ckConfirm('Reload the sample (Vancouver Study Tour)?')) {
-        loadItn(SAMPLE_ITN);
-        showToast('SAMPLE RELOADED');
-    }
+    // v8.0.0: 2択 ckConfirm から3択 confirmDestructive に変更
+    if (!await confirmDestructive('Reloading the sample (Vancouver Study Tour) will replace the current trip. Save the current file first?')) return;
+    loadTrip(SAMPLE_TRIP);
+    showToast('SAMPLE RELOADED');
 }
 async function purgeAll() {
-    const ok = await ckConfirm('PURGE ALL — this will discard all itinerary data and load a single empty day. Continue?', { danger: true, okText: 'PURGE' });
+    // v8.0.0: Purge は特に破壊的なので、まず3択で保存意思を確認し、
+    //         その後に「本当に消す?」の最終確認 (danger 表示) を出す.
+    if (!await confirmDestructive('PURGE will erase all itinerary data. Save the current file first?')) return;
+    const ok = await ckConfirm('Final confirmation: discard all data and load a single empty day. Continue?', { danger: true, okText: 'PURGE' });
     if (!ok) return;
-    loadItn({
-        format: 'itn-v1',
-        meta: { title: '', subtitle: '', operator: '', startDate: '', endDate: '' },
+    // localStorage の trip データも明示的に消す (Purge の本来の意味)
+    //   ただし trip:current は loadTrip → persistTrip で空 Trip に上書きされるので
+    //   実質的にはここでの delete は冗長。lastModified は新規 save で更新される。
+    //   念のため明示的に消すことで「purge した瞬間に消える」というメンタルモデルを保つ。
+    await storage.delete(STORAGE_KEYS.TRIP_CURRENT);
+    await storage.delete(STORAGE_KEYS.TRIP_LAST_MODIFIED);
+    loadTrip({
+        format: 'trip-v1',
+        meta: { title: '', subtitle: '', operator: '',
+                origin: '', originAirport: '', dest: '', destAirport: '',
+                startDate: '', endDate: '',
+                homeTimezone: '', destTimezone: '' },
         days: [ { date: todayIso(), dayLabel: 'DAY 01', summary: '', events: [] } ]
     });
     showToast('ALL DATA PURGED', false);
+}
+
+// ════════════════════════════════════════════════════════════════
+// v8.0.1: イベント詳細表示モーダル & 編集モーダル
+// ────────────────────────────────────────────────────────────────
+// 設計編 §5.2 / HANDOVER v8.0.1 §5.2 に従う。
+//
+// フロー (D 案):
+//   カードタップ → 詳細表示モーダル (read-only)
+//                     ↓ EDIT ボタン
+//                  編集モーダル (draft を編集 → Save で書き戻し)
+//                     ↓ Delete / Move Up / Move Down は詳細モーダルに
+//
+// 設計原則:
+//   - 編集は draft (state.trip と独立のコピー) を編集し、Save 時に
+//     state.trip の該当 event を上書きする。Cancel すれば draft 破棄。
+//   - Save 後は renderAll() + persistTrip() (自動保存)
+//   - 編集中に閉じようとした場合、変更があれば ckConfirm で確認
+//   - 「自動 status 昇格」はしない (設計編 §5.2-D)
+// ════════════════════════════════════════════════════════════════
+
+// 現在開いているコンテキスト
+let __evtCtx = null;
+// { dayIdx, evIdx, ev }  — 詳細表示モーダルが対象とする event
+let __evtDraft = null;
+// 編集モーダル内の作業用 draft オブジェクト (ev の deep clone)
+let __evtEditMode = null;
+// 'create' | 'edit'  — 編集モーダルの動作モード
+let __evtDraftPristine = null;
+// 編集モーダルを開いた時点の draft の JSON 文字列 (変更検知用)
+
+// type 別の表示ラベル
+const EVT_TYPE_LABEL = {
+    transport: 'TRANSPORT',
+    place:     'PLACE',
+    lodging:   'LODGING',
+    free:      'FREE TIME',
+    event:     'EVENT'
+};
+
+// transport の mode 選択肢
+const EVT_TRANSPORT_MODES = [
+    ['flight',   '✈ Flight'],
+    ['rail',     '🚆 Rail'],
+    ['bus',      '🚌 Bus'],
+    ['subway',   '🚇 Subway'],
+    ['taxi',     '🚕 Taxi'],
+    ['host_car', '🚙 Host Car'],
+    ['ferry',    '⛴ Ferry'],
+    ['walk',     '🚶 Walk']
+];
+
+// place の category 選択肢 (CATEGORY_DEF と整合)
+const EVT_PLACE_CATEGORIES = [
+    ['play',        '🎢 Play'],
+    ['study',       '🎓 Study'],
+    ['rest',        '🌙 Rest'],
+    ['meal',        '🍽 Meal'],
+    ['conference',  '🎤 Conference'],
+    ['sport',       '⚽ Sport'],
+    ['sightseeing', '🏛 Sight'],
+    ['shopping',    '🛍 Shop'],
+    ['other',       '◇ Other']
+];
+
+// lodging の kind 選択肢
+const EVT_LODGING_KINDS = [
+    ['homestay',     '🏠 Homestay'],
+    ['hotel',        '🛏 Hotel'],
+    ['dorm',         '🏨 Dorm'],
+    ['youth_hostel', '🛌 Hostel']
+];
+
+// companion 選択肢 (空 = 未指定)
+const EVT_COMPANIONS = [
+    ['',         '— None'],
+    ['group',    '👥 Group'],
+    ['host',     '🏠 Host'],
+    ['friends',  '👫 Friends'],
+    ['solo',     '🚶 Solo'],
+    ['teacher',  '👨‍🏫 Teacher']
+];
+
+// 通貨選択肢 (CURRENCY_SYMBOLS から主要なもの)
+const EVT_CURRENCIES = [
+    'JPY','USD','EUR','GBP','CAD','AUD','NZD','HKD','SGD','TWD',
+    'CNY','KRW','THB','INR','PHP','VND','IDR','MYR','MXN','CHF',
+    'SEK','NOK','DKK','PLN','RUB','BRL','ZAR','TRY','AED','SAR'
+];
+
+// status 選択肢
+const EVT_STATUSES = [
+    ['confirmed',   'Confirmed'],
+    ['tentative',   'Tentative'],
+    ['placeholder', 'Placeholder']
+];
+
+// ──────────────── 詳細表示モーダル ────────────────
+function openDetailModal(dayIdx, evIdx) {
+    const day = state.trip?.days?.[dayIdx];
+    if (!day) return;
+    const ev = day.events?.[evIdx];
+    if (!ev) return;
+    __evtCtx = { dayIdx, evIdx, ev };
+    renderDetailModal();
+    $('#evt-detail-modal').classList.add('active');
+}
+
+function closeDetailModal() {
+    $('#evt-detail-modal').classList.remove('active');
+    __evtCtx = null;
+}
+
+function renderDetailModal() {
+    if (!__evtCtx) return;
+    const { ev, dayIdx, evIdx } = __evtCtx;
+    const cat = eventCategory(ev);
+    const def = CATEGORY_DEF[cat] || CATEGORY_DEF.other;
+    const cls = categoryClass(cat);
+    const startT = eventStartTime(ev);
+    const endT = eventEndTime(ev);
+
+    // タイトル
+    $('#evt-detail-title').textContent = EVT_TYPE_LABEL[ev.type] || 'EVENT';
+
+    // メイン情報の組み立て
+    let nameText = '';
+    if (ev.type === 'transport') {
+        const carrier = ev.carrier || '';
+        let route = ev.routeName || '';
+        // renderEventCard と同じガード
+        const fromName = ev.from?.name || '';
+        const toName = ev.to?.name || '';
+        const looksLikeRouteDesc =
+            /[→▶]/.test(route) ||
+            (fromName && route.includes(fromName)) ||
+            (toName && route.includes(toName));
+        if (looksLikeRouteDesc) route = '';
+        nameText = [carrier, route].filter(Boolean).join(' · ') || (def.label || '—');
+    } else {
+        nameText = ev.name || '—';
+    }
+
+    const timeHtml = startT
+        ? `<span>${escapeHtml(startT)}</span>${endT ? `<span class="arrow">→</span><span>${escapeHtml(endT)}</span>` : ''}`
+        : '<span style="opacity:0.5">—</span>';
+
+    // status バッジ
+    let statusBadge = '';
+    if (ev.status === 'tentative') {
+        statusBadge = '<span class="evt-detail-status-badge tentative">TENTATIVE</span>';
+    } else if (ev.status === 'placeholder') {
+        statusBadge = '<span class="evt-detail-status-badge placeholder">PLACEHOLDER</span>';
+    }
+
+    // 行 (key/value) を貯める
+    const rows = [];
+    function row(k, v) {
+        if (v === undefined || v === null || v === '') return;
+        rows.push(`<div class="k">${escapeHtml(k)}</div><div class="v">${v}</div>`);
+    }
+
+    if (ev.type === 'transport') {
+        const fromBits = [];
+        if (ev.from?.name) fromBits.push(`<strong>${escapeHtml(ev.from.name)}</strong>`);
+        if (ev.from?.time) fromBits.push(`<span style="opacity:0.85">${escapeHtml(ev.from.time)}</span>`);
+        if (ev.from?.tz)   fromBits.push(`<span style="opacity:0.6;font-family:var(--text-mono);font-size:11px">${escapeHtml(ev.from.tz)}</span>`);
+        if (ev.from?.coord) fromBits.push(`<span style="opacity:0.55;font-family:var(--text-mono);font-size:11px">${ev.from.coord[0].toFixed(3)}°, ${ev.from.coord[1].toFixed(3)}°</span>`);
+        if (fromBits.length) row('From', fromBits.join('<br>'));
+
+        const toBits = [];
+        if (ev.to?.name) toBits.push(`<strong>${escapeHtml(ev.to.name)}</strong>`);
+        if (ev.to?.time) toBits.push(`<span style="opacity:0.85">${escapeHtml(ev.to.time)}</span>`);
+        if (ev.to?.tz)   toBits.push(`<span style="opacity:0.6;font-family:var(--text-mono);font-size:11px">${escapeHtml(ev.to.tz)}</span>`);
+        if (ev.to?.coord) toBits.push(`<span style="opacity:0.55;font-family:var(--text-mono);font-size:11px">${ev.to.coord[0].toFixed(3)}°, ${ev.to.coord[1].toFixed(3)}°</span>`);
+        if (toBits.length) row('To', toBits.join('<br>'));
+
+        if (ev.mode)      row('Mode', escapeHtml(ev.mode));
+        if (ev.carrier)   row('Carrier', escapeHtml(ev.carrier));
+        if (ev.routeName) row('Route', escapeHtml(ev.routeName));
+        if (ev.fare?.amount != null && ev.fare.amount !== '') {
+            row('Fare', fmtMoney(ev.fare.amount, ev.fare.currency));
+        }
+    } else if (ev.type === 'place') {
+        if (ev.category) row('Category', escapeHtml(ev.category));
+        if (ev.address)  row('Address', escapeHtml(ev.address));
+        if (ev.hours)    row('Hours', escapeHtml(ev.hours));
+        if (ev.coord)    row('Coords', `${ev.coord[0].toFixed(4)}°, ${ev.coord[1].toFixed(4)}°`);
+        if (ev.purpose)  row('Purpose', escapeHtml(ev.purpose));
+        if (ev.admission && (ev.admission.amount === 0 || ev.admission.amount)) {
+            const a = ev.admission.amount === 0 ? 'FREE' : fmtMoney(ev.admission.amount, ev.admission.currency);
+            row('Admission', a);
+        }
+        if (ev.url)      row('Map', `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer">OPEN ↗</a>`);
+    } else if (ev.type === 'lodging') {
+        if (ev.kind)     row('Kind', escapeHtml(ev.kind));
+        if (ev.address)  row('Address', escapeHtml(ev.address));
+        if (ev.coord)    row('Coords', `${ev.coord[0].toFixed(4)}°, ${ev.coord[1].toFixed(4)}°`);
+    } else if (ev.type === 'free') {
+        // free は時刻と notes のみ
+    } else if (ev.type === 'event') {
+        // event も時刻と name と notes のみ
+    }
+
+    if (ev.companion && COMPANION_DEF[ev.companion]) {
+        const c = COMPANION_DEF[ev.companion];
+        row('Companion', `${c.icon} ${escapeHtml(c.label)}`);
+    }
+
+    const detailHtml = `
+        <div class="evt-detail-hex">
+            <div class="tl-hex-wrap" style="--cat-color: var(--cat-${cls}); --cat-glow: rgba(0, 242, 254, 0.45)">
+                <div class="tl-hex"><div class="icon">${def.icon}</div></div>
+                <div class="hex-tag">${def.label}</div>
+            </div>
+            <div class="evt-detail-title-block">
+                <div class="evt-detail-name">${escapeHtml(nameText)}${statusBadge}</div>
+                <div class="evt-detail-time">${timeHtml}</div>
+            </div>
+        </div>
+        ${rows.length ? `
+            <div class="evt-detail-section">Details</div>
+            <div class="evt-detail-grid">${rows.join('')}</div>
+        ` : ''}
+        ${ev.notes ? `
+            <div class="evt-detail-section">Notes</div>
+            <div class="evt-detail-notes">${escapeHtml(ev.notes)}</div>
+        ` : ''}
+    `;
+    $('#evt-detail-body').innerHTML = detailHtml;
+
+    // Move Up/Down の有効化判定
+    const day = state.trip.days[dayIdx];
+    const total = day.events.length;
+    $('#evt-detail-up').disabled   = (evIdx <= 0);
+    $('#evt-detail-down').disabled = (evIdx >= total - 1);
+    $('#evt-detail-up').style.opacity   = (evIdx <= 0) ? '0.3' : '';
+    $('#evt-detail-down').style.opacity = (evIdx >= total - 1) ? '0.3' : '';
+}
+
+async function detailDeleteClicked() {
+    if (!__evtCtx) return;
+    const { dayIdx, evIdx, ev } = __evtCtx;
+    const label = EVT_TYPE_LABEL[ev.type] || 'event';
+    const ok = await ckConfirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`, {
+        danger: true, okText: 'DELETE'
+    });
+    if (!ok) return;
+    state.trip.days[dayIdx].events.splice(evIdx, 1);
+    persistTrip();
+    closeDetailModal();
+    renderAll();
+    showToast('EVENT DELETED');
+}
+
+function detailMoveClicked(direction) {
+    if (!__evtCtx) return;
+    const { dayIdx, evIdx } = __evtCtx;
+    const events = state.trip.days[dayIdx].events;
+    const newIdx = evIdx + direction;
+    if (newIdx < 0 || newIdx >= events.length) return;
+    // swap
+    [events[evIdx], events[newIdx]] = [events[newIdx], events[evIdx]];
+    __evtCtx.evIdx = newIdx;
+    __evtCtx.ev = events[newIdx];
+    persistTrip();
+    renderAll();
+    renderDetailModal();
+}
+
+// ──────────────── 編集モーダル ────────────────
+function openEditModal(dayIdx, evIdx) {
+    const day = state.trip?.days?.[dayIdx];
+    if (!day) return;
+    const ev = day.events?.[evIdx];
+    if (!ev) return;
+    __evtCtx = { dayIdx, evIdx, ev };
+    __evtEditMode = 'edit';
+    __evtDraft = deepClone(ev);
+    __evtDraftPristine = JSON.stringify(__evtDraft);
+    $('#evt-edit-title').textContent = `EDIT ${EVT_TYPE_LABEL[ev.type] || 'EVENT'}`;
+    renderEditForm();
+    $('#evt-edit-modal').classList.add('active');
+}
+
+function openCreateModal(dayIdx, type) {
+    __evtCtx = { dayIdx, evIdx: -1, ev: null };
+    __evtEditMode = 'create';
+    __evtDraft = makeDefaultEvent(type, dayIdx);
+    __evtDraftPristine = JSON.stringify(__evtDraft);
+    $('#evt-edit-title').textContent = `NEW ${EVT_TYPE_LABEL[type] || 'EVENT'}`;
+    renderEditForm();
+    $('#evt-edit-modal').classList.add('active');
+}
+
+async function closeEditModal(opts = {}) {
+    // opts.force = true なら確認なしで閉じる
+    if (!opts.force) {
+        // 変更があったかチェック
+        const current = JSON.stringify(__evtDraft);
+        if (current !== __evtDraftPristine) {
+            const ok = await ckConfirm('Discard unsaved changes?', { okText: 'DISCARD' });
+            if (!ok) return false;
+        }
+    }
+    $('#evt-edit-modal').classList.remove('active');
+    __evtDraft = null;
+    __evtDraftPristine = null;
+    __evtEditMode = null;
+    return true;
+}
+
+function makeDefaultEvent(type, dayIdx) {
+    // 直前のイベントの終了時刻があれば、それを startTime のデフォルトに
+    let defaultStart = '';
+    const day = state.trip.days[dayIdx];
+    if (day && day.events && day.events.length > 0) {
+        const prev = day.events[day.events.length - 1];
+        defaultStart = eventEndTime(prev) || eventStartTime(prev) || '';
+    }
+    const base = { type, status: 'placeholder' };
+    if (type === 'transport') {
+        return Object.assign(base, {
+            mode: 'flight', carrier: '', routeName: '',
+            from: { name: '', time: defaultStart, tz: '' },
+            to:   { name: '', time: '', tz: '' },
+            fare: { amount: '', currency: 'JPY' },
+            companion: '',
+            notes: ''
+        });
+    }
+    if (type === 'place') {
+        return Object.assign(base, {
+            name: '', category: 'other',
+            address: '', startTime: defaultStart, endTime: '',
+            purpose: '', companion: '', notes: ''
+        });
+    }
+    if (type === 'lodging') {
+        return Object.assign(base, {
+            kind: 'hotel', name: '',
+            address: '', checkIn: defaultStart, checkOut: '',
+            notes: ''
+        });
+    }
+    if (type === 'free') {
+        return Object.assign(base, {
+            startTime: defaultStart, endTime: '', notes: ''
+        });
+    }
+    if (type === 'event') {
+        return Object.assign(base, {
+            name: '', startTime: defaultStart, endTime: '', notes: ''
+        });
+    }
+    return base;
+}
+
+function deepClone(o) {
+    return JSON.parse(JSON.stringify(o));
+}
+
+// フォーム生成 — type 別に DOM を組み立てる
+function renderEditForm() {
+    const ev = __evtDraft;
+    if (!ev) return;
+    let html = '';
+    if (ev.type === 'transport') html = formTransport(ev);
+    else if (ev.type === 'place') html = formPlace(ev);
+    else if (ev.type === 'lodging') html = formLodging(ev);
+    else if (ev.type === 'free') html = formFree(ev);
+    else if (ev.type === 'event') html = formEvent(ev);
+    else html = '<div style="color: var(--accent-warning)">Unknown event type</div>';
+    $('#evt-edit-body').innerHTML = html;
+    attachFormHandlers();
+}
+
+// 共通: status セレクト
+function statusFieldHtml(currentStatus) {
+    const opts = EVT_STATUSES.map(([v, l]) =>
+        `<option value="${v}"${v === currentStatus ? ' selected' : ''}>${escapeHtml(l)}</option>`
+    ).join('');
+    return `
+        <div class="evt-form-field">
+            <label>Status</label>
+            <select data-field="status">${opts}</select>
+        </div>
+    `;
+}
+
+// 共通: companion セレクト
+function companionFieldHtml(currentCompanion) {
+    const opts = EVT_COMPANIONS.map(([v, l]) =>
+        `<option value="${v}"${v === (currentCompanion || '') ? ' selected' : ''}>${escapeHtml(l)}</option>`
+    ).join('');
+    return `
+        <div class="evt-form-field">
+            <label>Companion</label>
+            <select data-field="companion">${opts}</select>
+        </div>
+    `;
+}
+
+// 共通: notes フィールド
+function notesFieldHtml(currentNotes) {
+    return `
+        <div class="evt-form-field full">
+            <label>Notes</label>
+            <textarea data-field="notes" rows="3" placeholder="Free-form notes...">${escapeHtml(currentNotes || '')}</textarea>
+        </div>
+    `;
+}
+
+// 共通: 座標フィールド (path は "from.coord" や "coord" のような dot path)
+function coordFieldHtml(path, currentCoord) {
+    const lat = (currentCoord && currentCoord[0] != null) ? currentCoord[0] : '';
+    const lon = (currentCoord && currentCoord[1] != null) ? currentCoord[1] : '';
+    return `
+        <div class="evt-form-field full">
+            <label>Coord (lat, lon)</label>
+            <div class="evt-form-coord">
+                <input type="number" step="any" data-field="${path}.0" value="${lat}" placeholder="lat e.g. 35.5494">
+                <input type="number" step="any" data-field="${path}.1" value="${lon}" placeholder="lon e.g. 139.7798">
+            </div>
+        </div>
+    `;
+}
+
+function formTransport(ev) {
+    const modeOpts = EVT_TRANSPORT_MODES.map(([v, l]) =>
+        `<option value="${v}"${v === ev.mode ? ' selected' : ''}>${escapeHtml(l)}</option>`
+    ).join('');
+    const currOpts = EVT_CURRENCIES.map(c =>
+        `<option value="${c}"${c === (ev.fare?.currency || '') ? ' selected' : ''}>${c}</option>`
+    ).join('');
+    return `
+        <div class="evt-form-section">Basics</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Mode</label>
+                <select data-field="mode">${modeOpts}</select>
+            </div>
+            ${statusFieldHtml(ev.status)}
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Carrier</label>
+                <input type="text" data-field="carrier" value="${escapeHtml(ev.carrier || '')}" placeholder="e.g. ANA, BC Ferries">
+            </div>
+            <div class="evt-form-field">
+                <label>Route / Flight no.</label>
+                <input type="text" data-field="routeName" value="${escapeHtml(ev.routeName || '')}" placeholder="e.g. NH116, Charter">
+            </div>
+        </div>
+
+        <div class="evt-form-section">From</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Name</label>
+                <input type="text" data-field="from.name" value="${escapeHtml(ev.from?.name || '')}" placeholder="e.g. Haneda (HND)">
+            </div>
+            <div class="evt-form-field">
+                <label>Time</label>
+                <input type="time" data-field="from.time" value="${escapeHtml(ev.from?.time || '')}">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Timezone (IANA)</label>
+                <input type="text" data-field="from.tz" value="${escapeHtml(ev.from?.tz || '')}" placeholder="e.g. Asia/Tokyo">
+            </div>
+        </div>
+        ${coordFieldHtml('from.coord', ev.from?.coord)}
+
+        <div class="evt-form-section">To</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Name</label>
+                <input type="text" data-field="to.name" value="${escapeHtml(ev.to?.name || '')}" placeholder="e.g. Vancouver (YVR)">
+            </div>
+            <div class="evt-form-field">
+                <label>Time</label>
+                <input type="time" data-field="to.time" value="${escapeHtml(ev.to?.time || '')}">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Timezone (IANA)</label>
+                <input type="text" data-field="to.tz" value="${escapeHtml(ev.to?.tz || '')}" placeholder="e.g. America/Vancouver">
+            </div>
+        </div>
+        ${coordFieldHtml('to.coord', ev.to?.coord)}
+
+        <div class="evt-form-section">Other</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Fare</label>
+                <div class="evt-form-fare">
+                    <input type="number" step="any" data-field="fare.amount" value="${ev.fare?.amount ?? ''}" placeholder="e.g. 580">
+                    <select data-field="fare.currency">${currOpts}</select>
+                </div>
+            </div>
+            ${companionFieldHtml(ev.companion)}
+        </div>
+        ${notesFieldHtml(ev.notes)}
+    `;
+}
+
+function formPlace(ev) {
+    const catOpts = EVT_PLACE_CATEGORIES.map(([v, l]) =>
+        `<option value="${v}"${v === ev.category ? ' selected' : ''}>${escapeHtml(l)}</option>`
+    ).join('');
+    return `
+        <div class="evt-form-section">Basics</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Name</label>
+                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="e.g. Butchart Gardens">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Category</label>
+                <select data-field="category">${catOpts}</select>
+            </div>
+            ${statusFieldHtml(ev.status)}
+        </div>
+
+        <div class="evt-form-section">Time</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Start</label>
+                <input type="time" data-field="startTime" value="${escapeHtml(ev.startTime || '')}">
+            </div>
+            <div class="evt-form-field">
+                <label>End</label>
+                <input type="time" data-field="endTime" value="${escapeHtml(ev.endTime || '')}">
+            </div>
+        </div>
+
+        <div class="evt-form-section">Location</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Address</label>
+                <input type="text" data-field="address" value="${escapeHtml(ev.address || '')}" placeholder="Street, city, region">
+            </div>
+        </div>
+        ${coordFieldHtml('coord', ev.coord)}
+
+        <div class="evt-form-section">Other</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Purpose</label>
+                <input type="text" data-field="purpose" value="${escapeHtml(ev.purpose || '')}" placeholder="Why you're going">
+            </div>
+            ${companionFieldHtml(ev.companion)}
+        </div>
+        ${notesFieldHtml(ev.notes)}
+    `;
+}
+
+function formLodging(ev) {
+    const kindOpts = EVT_LODGING_KINDS.map(([v, l]) =>
+        `<option value="${v}"${v === ev.kind ? ' selected' : ''}>${escapeHtml(l)}</option>`
+    ).join('');
+    return `
+        <div class="evt-form-section">Basics</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Name</label>
+                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="e.g. Host Family Residence">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Kind</label>
+                <select data-field="kind">${kindOpts}</select>
+            </div>
+            ${statusFieldHtml(ev.status)}
+        </div>
+
+        <div class="evt-form-section">Time</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Check-in</label>
+                <input type="time" data-field="checkIn" value="${escapeHtml(ev.checkIn || '')}">
+            </div>
+            <div class="evt-form-field">
+                <label>Check-out</label>
+                <input type="time" data-field="checkOut" value="${escapeHtml(ev.checkOut || '')}">
+            </div>
+        </div>
+
+        <div class="evt-form-section">Location</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Address</label>
+                <input type="text" data-field="address" value="${escapeHtml(ev.address || '')}" placeholder="Street, city, region">
+            </div>
+        </div>
+        ${coordFieldHtml('coord', ev.coord)}
+
+        ${notesFieldHtml(ev.notes)}
+    `;
+}
+
+function formFree(ev) {
+    return `
+        <div class="evt-form-section">Time</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Start</label>
+                <input type="time" data-field="startTime" value="${escapeHtml(ev.startTime || '')}">
+            </div>
+            <div class="evt-form-field">
+                <label>End</label>
+                <input type="time" data-field="endTime" value="${escapeHtml(ev.endTime || '')}">
+            </div>
+            ${statusFieldHtml(ev.status)}
+        </div>
+        ${notesFieldHtml(ev.notes)}
+    `;
+}
+
+function formEvent(ev) {
+    return `
+        <div class="evt-form-section">Basics</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Name</label>
+                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="Event name">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Start</label>
+                <input type="time" data-field="startTime" value="${escapeHtml(ev.startTime || '')}">
+            </div>
+            <div class="evt-form-field">
+                <label>End</label>
+                <input type="time" data-field="endTime" value="${escapeHtml(ev.endTime || '')}">
+            </div>
+            ${statusFieldHtml(ev.status)}
+        </div>
+        ${notesFieldHtml(ev.notes)}
+    `;
+}
+
+// フォームの input/select/textarea にイベントハンドラを設置。
+// data-field="a.b.c" を辿って draft オブジェクトに書き戻す。
+function attachFormHandlers() {
+    const body = $('#evt-edit-body');
+    body.querySelectorAll('[data-field]').forEach(el => {
+        el.addEventListener('input', () => {
+            const path = el.dataset.field;
+            const val = el.value;
+            setDraftField(path, val, el);
+        });
+        // select の場合は change も拾う (input イベントは select でも発火するが念のため)
+        if (el.tagName === 'SELECT') {
+            el.addEventListener('change', () => {
+                const path = el.dataset.field;
+                setDraftField(path, el.value, el);
+            });
+        }
+    });
+}
+
+// "from.coord.0" や "fare.amount" や "notes" のようなパスに値を書き込む
+// 配列添字は数値として扱う (path 部分が数字なら index)
+function setDraftField(path, value, el) {
+    if (!__evtDraft) return;
+    const parts = path.split('.');
+    let obj = __evtDraft;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        // 次の部分が数値なら、現在の値は配列でなければならない
+        const nextIsIndex = /^\d+$/.test(parts[i + 1]);
+        if (obj[p] == null) {
+            obj[p] = nextIsIndex ? [] : {};
+        }
+        obj = obj[p];
+    }
+    const last = parts[parts.length - 1];
+    // 値の型変換:
+    //   number input → 数値 (空文字なら null)
+    //   coord の各要素 → 数値 (空文字なら null だが両方 null なら setDraftField の後段で coord 自体を消す)
+    //   その他 → 文字列のまま
+    let v = value;
+    const isNumberInput = el && el.type === 'number';
+    const isCoordIndex = /^\d+$/.test(last);
+    if (isNumberInput || isCoordIndex) {
+        if (v === '' || v == null) {
+            v = null;
+        } else {
+            const n = Number(v);
+            v = Number.isFinite(n) ? n : null;
+        }
+    }
+    if (isCoordIndex) {
+        // 配列に書き込み
+        obj[Number(last)] = v;
+    } else {
+        obj[last] = v;
+    }
+}
+
+// ────── 保存 ──────
+function saveEditModal() {
+    if (!__evtDraft || !__evtCtx) return;
+    // draft をクリーンアップしてから書き戻す
+    const cleaned = cleanDraft(__evtDraft);
+    if (__evtEditMode === 'create') {
+        const { dayIdx } = __evtCtx;
+        state.trip.days[dayIdx].events.push(cleaned);
+        showToast('EVENT ADDED');
+    } else {
+        const { dayIdx, evIdx } = __evtCtx;
+        state.trip.days[dayIdx].events[evIdx] = cleaned;
+        // 詳細表示モーダルが開いていれば、参照を更新
+        __evtCtx.ev = cleaned;
+        showToast('EVENT SAVED');
+    }
+    persistTrip();
+    renderAll();
+    // 編集モーダルを閉じる (force: 変更検知をスキップ — 既に保存済み)
+    closeEditModal({ force: true });
+    // 詳細モーダルが開いていれば再描画
+    if ($('#evt-detail-modal').classList.contains('active') && __evtCtx) {
+        renderDetailModal();
+    }
+}
+
+// draft をクリーンアップ:
+//   - 文字列フィールドの trim
+//   - 空の coord 配列 ([null, null] や [null, 数値]) は削除
+//   - 空の fare ({amount: null, currency: ...}) は currency 残しても amount が null なら fare 自体を削除
+//   - status が無ければ confirmed
+function cleanDraft(draft) {
+    const d = deepClone(draft);
+    if (!d.status) d.status = 'confirmed';
+    // 文字列の trim
+    for (const k of Object.keys(d)) {
+        if (typeof d[k] === 'string') d[k] = d[k].trim();
+    }
+    // transport
+    if (d.type === 'transport') {
+        for (const leg of ['from', 'to']) {
+            if (!d[leg]) continue;
+            if (typeof d[leg].name === 'string') d[leg].name = d[leg].name.trim();
+            if (typeof d[leg].time === 'string') d[leg].time = d[leg].time.trim();
+            if (typeof d[leg].tz === 'string') d[leg].tz = d[leg].tz.trim();
+            // coord クリーンアップ
+            if (Array.isArray(d[leg].coord)) {
+                const [a, b] = d[leg].coord;
+                if (typeof a !== 'number' || typeof b !== 'number'
+                    || !Number.isFinite(a) || !Number.isFinite(b)) {
+                    delete d[leg].coord;
+                }
+            }
+        }
+        // fare: amount が無ければ fare 自体削除
+        if (d.fare) {
+            const amt = d.fare.amount;
+            if (amt === '' || amt == null || !Number.isFinite(Number(amt))) {
+                delete d.fare;
+            } else {
+                d.fare.amount = Number(amt);
+            }
+        }
+    }
+    // place / lodging の coord
+    if (d.type === 'place' || d.type === 'lodging') {
+        if (Array.isArray(d.coord)) {
+            const [a, b] = d.coord;
+            if (typeof a !== 'number' || typeof b !== 'number'
+                || !Number.isFinite(a) || !Number.isFinite(b)) {
+                delete d.coord;
+            }
+        }
+    }
+    // 空文字の任意フィールドを削除しすぎない:
+    //   notes/address/purpose 等は空でも残しておくと再編集時に空フォームで開けて自然。
+    //   そのため空文字削除は積極的に行わない (UI で空フィールドは ev.xxx || '' と扱えるので無害)。
+    return d;
+}
+
+// ──────────────── ADD EVENT (type 選択モーダル経由) ────────────────
+let __evtTypeSelDayIdx = null;
+function openTypeSelModal(dayIdx) {
+    __evtTypeSelDayIdx = dayIdx;
+    $('#evt-typesel-modal').classList.add('active');
+}
+function closeTypeSelModal() {
+    $('#evt-typesel-modal').classList.remove('active');
+    __evtTypeSelDayIdx = null;
+}
+
+// ──────────────── 初期化 (DOMContentLoaded 内で呼ぶ) ────────────────
+function setupEventEditHandlers() {
+    // 詳細表示モーダル
+    $('#evt-detail-close').addEventListener('click', closeDetailModal);
+    $('#evt-detail-edit').addEventListener('click', () => {
+        if (!__evtCtx) return;
+        const { dayIdx, evIdx } = __evtCtx;
+        // 詳細モーダルは閉じずに編集モーダルを上に開く
+        // (Save 後の戻り先として詳細モーダルを残したいケースもあるが、
+        //  ここでは UX 簡潔化のため詳細→編集→Save→detail 再描画とする)
+        openEditModal(dayIdx, evIdx);
+    });
+    $('#evt-detail-delete').addEventListener('click', detailDeleteClicked);
+    $('#evt-detail-up').addEventListener('click',   () => detailMoveClicked(-1));
+    $('#evt-detail-down').addEventListener('click', () => detailMoveClicked(+1));
+    // バックドロップクリックで閉じる
+    $('#evt-detail-modal').addEventListener('click', (e) => {
+        if (e.target === $('#evt-detail-modal')) closeDetailModal();
+    });
+
+    // 編集モーダル
+    $('#evt-edit-close').addEventListener('click', () => closeEditModal());
+    $('#evt-edit-cancel').addEventListener('click', () => closeEditModal());
+    $('#evt-edit-save').addEventListener('click', saveEditModal);
+    $('#evt-edit-modal').addEventListener('click', (e) => {
+        if (e.target === $('#evt-edit-modal')) closeEditModal();
+    });
+
+    // Type 選択モーダル
+    $('#evt-typesel-close').addEventListener('click', closeTypeSelModal);
+    $('#evt-typesel-modal').addEventListener('click', (e) => {
+        if (e.target === $('#evt-typesel-modal')) closeTypeSelModal();
+    });
+    document.querySelectorAll('#evt-typesel-modal [data-type]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const t = btn.dataset.type;
+            const dayIdx = __evtTypeSelDayIdx;
+            closeTypeSelModal();
+            if (dayIdx != null) openCreateModal(dayIdx, t);
+        });
+    });
 }
 
 function closeModal() {
@@ -4018,12 +5667,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // v7.9.6: URLパラメータ ?geodebug=1 で起動されている場合はオーバーレイ表示
     __geoDebugApplyVisibility();
 
-    $('#btn-export').addEventListener('click', exportItn);
-    $('#btn-import').addEventListener('click', importItn);
+    $('#btn-export').addEventListener('click', exportTrip);
+    $('#btn-import').addEventListener('click', importTrip);
     $('#btn-template').addEventListener('click', loadTemplate);
     $('#btn-sample').addEventListener('click', reloadSample);
     $('#btn-purge').addEventListener('click', purgeAll);
     $('#btn-close').addEventListener('click', closeModal);
+
+    // v8.0.1: イベント編集モーダル系のハンドラ設置
+    setupEventEditHandlers();
 
     $('#map-zoom-in').addEventListener('click', () => mapZoomBy(1));
     $('#map-zoom-out').addEventListener('click', () => mapZoomBy(-1));
@@ -4049,12 +5701,15 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const text = await file.text();
             const parsed = JSON.parse(text);
-            if (parsed.format !== 'itn-v1') {
-                showToast('Format not itn-v1', true);
+            // v8.0.0: format チェックは normalizeTrip に委ねる。
+            //   旧 'itn-v1' は受理して 'trip-v1' に変換、それ以外は loadTrip 内で reject。
+            //   ただしユーザーへの早期通知のために format フィールドだけ先に見ておく。
+            if (parsed && parsed.format !== 'trip-v1' && parsed.format !== 'itn-v1') {
+                showToast('Format not supported (need trip-v1 or itn-v1)', true);
                 return;
             }
-            loadItn(parsed);
-            showToast('IMPORTED');
+            const ok = loadTrip(parsed);
+            if (ok) showToast('IMPORTED');
         } catch (err) {
             console.error(err);
             showToast('Import failed', true);
@@ -4072,9 +5727,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 mapToggleFullscreen();
                 return;
             }
-            // 2. confirm優先
+            // 2. v8.0.0: confirm3 (3択) 優先 → 既存 confirm の順.
+            //    classList の直接操作ではなく cancel ボタンの click を呼んで
+            //    Promise の resolve も連動させる (旧バグ修正).
+            if ($('#confirm3-overlay').classList.contains('active')) {
+                $('#confirm3-cancel').click();
+                return;
+            }
             if ($('#confirm-overlay').classList.contains('active')) {
-                $('#confirm-overlay').classList.remove('active');
+                $('#confirm-cancel').click();
+                return;
+            }
+            // 3. v8.0.1: 編集モーダル → 詳細モーダル → typesel モーダル.
+            //    編集モーダルは「変更未保存の確認」が走る可能性があるため
+            //    closeEditModal() 経由で閉じる (内部で ckConfirm が出るかも).
+            if ($('#evt-edit-modal').classList.contains('active')) {
+                closeEditModal();
+                return;
+            }
+            if ($('#evt-detail-modal').classList.contains('active')) {
+                closeDetailModal();
+                return;
+            }
+            if ($('#evt-typesel-modal').classList.contains('active')) {
+                closeTypeSelModal();
                 return;
             }
             closeModal();
@@ -4082,13 +5758,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.addEventListener('mousedown', (e) => {
         const stage = $('#stage');
-        const conf = $('#confirm-overlay');
-        if (conf.classList.contains('active')) return;
+        // v8.0.0: confirm3-overlay もガード対象に追加 (バックドロップクリックの誤発火回避)
+        if ($('#confirm-overlay').classList.contains('active')) return;
+        if ($('#confirm3-overlay').classList.contains('active')) return;
+        // v8.0.1: 新規モーダル群もガード対象に追加 (背景クリック誤発火回避)
+        if ($('#evt-edit-modal').classList.contains('active')) return;
+        if ($('#evt-detail-modal').classList.contains('active')) return;
+        if ($('#evt-typesel-modal').classList.contains('active')) return;
         // stageの内側のクリックは無視。stageの外(背景)クリックでクローズ
         if (!stage.contains(e.target)) closeModal();
     });
 
-    loadItn(SAMPLE_ITN);
+    // v8.0.0: 起動時ロード優先順位 (HANDOVER §6 Phase 1-5)
+    //   1. localStorage の trip:current → あればそれを使う
+    //   2. 無い / 壊れている → SAMPLE_TRIP をロード
+    //
+    //   localStorage 経由の load では persist:false を渡し、
+    //   「読んだだけで自分の値を再保存する」無駄な書き込みを避ける。
+    //   SAMPLE フォールバック時は persist:true (デフォルト) で trip:current を初期化する。
+    //
+    //   ※注意: §5-D に従い「サンプル中は初回ウィザードを出さない」方針なので、
+    //          SAMPLE をロードしたタイミングで localStorage に保存することで
+    //          「次回起動以降は SAMPLE が編集中の旅程として扱われる」状態にする。
+    (async () => {
+        const stored = await storage.load(STORAGE_KEYS.TRIP_CURRENT);
+        if (stored && loadTrip(stored, { persist: false })) {
+            // localStorage から復元成功
+        } else {
+            // フォールバック: サンプル
+            loadTrip(SAMPLE_TRIP);
+        }
+    })();
 
     // Leafletのサイズ確定:DOM描画後に呼ぶ必要あり
     setTimeout(() => {
@@ -4125,12 +5825,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div class="ops-sector">Storage I/O</div>
         <div class="ops-action">
-            <button id="btn-import">📂 Import .itn.json</button>
-            <div class="ops-desc">Load itinerary from external file. Replaces current data.</div>
+            <button id="btn-import">📂 Import .trip.json</button>
+            <div class="ops-desc">Load itinerary from external file. Replaces current data. Legacy .itn.json also accepted.</div>
         </div>
         <div class="ops-action">
             <button id="btn-export">💾 Export</button>
-            <div class="ops-desc">Save current itinerary as .itn.json file.</div>
+            <div class="ops-desc">Save current itinerary as .trip.json file.</div>
         </div>
 
         <div class="ops-sector">Initialize</div>
@@ -4189,9 +5889,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // ESC キーで閉じる(ただし confirm モーダル等が開いていたら無視)。
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && panel.classList.contains('active')) {
-            // confirm モーダルが上に乗っている場合は閉じない
-            const conf = document.getElementById('confirm-overlay');
-            if (conf && conf.classList.contains('active')) return;
+            // confirm モーダル(2択 or v8.0.0 で追加した 3択)が上に乗っている場合は閉じない
+            const conf  = document.getElementById('confirm-overlay');
+            const conf3 = document.getElementById('confirm3-overlay');
+            if (conf  && conf.classList.contains('active'))  return;
+            if (conf3 && conf3.classList.contains('active')) return;
+            // v8.0.1: イベント編集系モーダルもガード対象
+            const evtEdit   = document.getElementById('evt-edit-modal');
+            const evtDetail = document.getElementById('evt-detail-modal');
+            const evtTypeSel = document.getElementById('evt-typesel-modal');
+            if (evtEdit    && evtEdit.classList.contains('active'))    return;
+            if (evtDetail  && evtDetail.classList.contains('active'))  return;
+            if (evtTypeSel && evtTypeSel.classList.contains('active')) return;
             close();
         }
     });
