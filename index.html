@@ -1455,6 +1455,8 @@ body.has-fullscreen-map {
 .tl-card .badge.companion-teacher { color: #a78bfa; border-color: rgba(167, 139, 250, 0.45); }
 .tl-card .badge.fare              { color: var(--accent-gold); border-color: rgba(243, 156, 18, 0.4); }
 .tl-card .badge.admission         { color: var(--accent-gold); border-color: rgba(243, 156, 18, 0.4); }
+/* v8.0.2: fare/admission を統合した cost バッジ. 同じ金色系で統一. */
+.tl-card .badge.cost              { color: var(--accent-gold); border-color: rgba(243, 156, 18, 0.4); }
 
 /* 詳細(展開) */
 .tl-card .detail {
@@ -2223,11 +2225,6 @@ body.has-fullscreen-map {
     border-radius: 3px;
     vertical-align: middle;
 }
-.evt-detail-status-badge.tentative {
-    color: var(--accent-warm);
-    border: 1px solid rgba(251, 191, 36, 0.5);
-    background: rgba(251, 191, 36, 0.06);
-}
 .evt-detail-status-badge.placeholder {
     color: rgba(148, 163, 184, 0.9);
     border: 1px solid rgba(148, 163, 184, 0.5);
@@ -2394,24 +2391,8 @@ body.has-fullscreen-map {
     font-size: 14px;
 }
 
-/* ──── status: tentative / placeholder のカード見た目 ──── */
-/* tentative: 暗くしすぎず、薄い縞模様で「未確定」を示す */
-.tl-item.status-tentative .tl-card {
-    opacity: 0.78;
-}
-.tl-item.status-tentative .tl-card::after {
-    content: 'TENTATIVE';
-    position: absolute;
-    top: 8px;
-    right: 12px;
-    font-family: var(--text-mono);
-    font-size: 8px;
-    letter-spacing: 0.2em;
-    color: var(--accent-warm);
-    opacity: 0.7;
-    pointer-events: none;
-}
-/* placeholder: もっと薄く、点線枠で「枠だけ」感を出す */
+/* ──── status: placeholder のカード見た目 ──── */
+/* v8.0.2: tentative 廃止. placeholder のみ. 点線枠 + 薄字で「枠だけ」感を出す */
 .tl-item.status-placeholder .tl-card {
     opacity: 0.55;
     border-style: dashed;
@@ -2687,7 +2668,8 @@ body.has-fullscreen-map {
 </div>
 
 <!-- v8.0.1: イベント詳細表示モーダル (read-only)
-     カードタップで開き、EDIT ボタンで編集モーダルに遷移する. -->
+     カードタップで開き、EDIT ボタンで編集モーダルに遷移する.
+     v8.0.2: Delete は編集モーダル側に移動. ここには ▲▼ Edit のみ残す. -->
 <div class="evt-modal" id="evt-detail-modal" role="dialog" aria-modal="true" aria-labelledby="evt-detail-title">
     <div class="evt-modal-box">
         <div class="evt-modal-header">
@@ -2698,7 +2680,6 @@ body.has-fullscreen-map {
             <!-- JS で動的に描画 -->
         </div>
         <div class="evt-modal-footer">
-            <button class="danger" id="evt-detail-delete">🗑 Delete</button>
             <button class="icon-only" id="evt-detail-up" title="Move up">▲</button>
             <button class="icon-only" id="evt-detail-down" title="Move down">▼</button>
             <div class="spacer"></div>
@@ -2708,7 +2689,8 @@ body.has-fullscreen-map {
 </div>
 
 <!-- v8.0.1: イベント編集モーダル (新規追加 / 編集 共通)
-     evt-edit-mode で 'create' | 'edit' を切替. -->
+     evt-edit-mode で 'create' | 'edit' を切替.
+     v8.0.2: Delete ボタンを左端に配置 (edit モード時のみ表示). -->
 <div class="evt-modal" id="evt-edit-modal" role="dialog" aria-modal="true" aria-labelledby="evt-edit-title">
     <div class="evt-modal-box">
         <div class="evt-modal-header">
@@ -2719,6 +2701,8 @@ body.has-fullscreen-map {
             <!-- JS で動的にフォームを描画 -->
         </div>
         <div class="evt-modal-footer">
+            <button class="danger" id="evt-edit-delete">🗑 Delete</button>
+            <div class="spacer"></div>
             <button id="evt-edit-cancel">Cancel</button>
             <button class="primary" id="evt-edit-save">💾 Save</button>
         </div>
@@ -2838,7 +2822,7 @@ const SAMPLE_TRIP = {
                 { type: "transport", mode: "rail", carrier: "JR / Keikyu",
                   from: { name: "Shinjuku Stn.", coord: [35.6896, 139.7006], time: "16:00", tz: "Asia/Tokyo" },
                   to:   { name: "Haneda Airport T3", coord: [35.5494, 139.7798], time: "17:30", tz: "Asia/Tokyo" },
-                  fare: { amount: 580, currency: "JPY" }, companion: "group",
+                  cost: { amount: 580, currency: "JPY" }, companion: "group",
                   notes: "Meet at 16:00 at the ticket gate. Teacher will hold a placard." },
                 { type: "place", name: "Haneda Airport Terminal 3 (Intl)", category: "other",
                   coord: [35.5494, 139.7798], address: "2-6-5 Hanedakuko, Ota-ku, Tokyo",
@@ -2876,7 +2860,7 @@ const SAMPLE_TRIP = {
                 { type: "place", name: "University of British Columbia (UBC)", category: "study",
                   coord: [49.2606, -123.2460], address: "2329 West Mall, Vancouver, BC V6T 1Z4",
                   startTime: "09:30", endTime: "12:00", hours: "09:00–17:00",
-                  admission: { amount: 0, currency: "CAD" },
+                  cost: { amount: 0, currency: "CAD" },
                   purpose: "Campus tour — broaden the horizon for higher education abroad",
                   companion: "group",
                   url: "https://maps.google.com/?q=University+of+British+Columbia",
@@ -2907,12 +2891,12 @@ const SAMPLE_TRIP = {
                 { type: "transport", mode: "ferry", carrier: "BC Ferries",
                   from: { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "09:00", tz: "America/Vancouver" },
                   to:   { name: "Swartz Bay", coord: [48.6886, -123.4108], time: "10:35", tz: "America/Vancouver" },
-                  fare: { amount: 18, currency: "CAD" }, companion: "group",
+                  cost: { amount: 18, currency: "CAD" }, companion: "group",
                   notes: "Strait crossing. Step out on deck — orcas are sometimes spotted." },
                 { type: "place", name: "Butchart Gardens", category: "sightseeing",
                   coord: [48.5640, -123.4690], address: "800 Benvenuto Ave, Brentwood Bay, BC",
                   startTime: "11:30", endTime: "13:30", hours: "09:00–22:00",
-                  admission: { amount: 38, currency: "CAD" },
+                  cost: { amount: 38, currency: "CAD" },
                   purpose: "Stroll the world-famous flower garden",
                   companion: "group",
                   url: "https://maps.google.com/?q=Butchart+Gardens" },
@@ -3053,15 +3037,48 @@ function normalizeTrip(raw) {
         date: d.date || '',
         dayLabel: d.dayLabel || '',
         summary: d.summary || '',
-        events: (d.events || []).map(ev => {
-            // status が無ければ confirmed 扱い (旧スキーマ互換)
-            if (!ev.status) {
-                return Object.assign({ status: 'confirmed' }, ev);
-            }
-            return ev;
-        })
+        events: (d.events || []).map(ev => migrateEvent(ev))
     }));
     return { format: 'trip-v1', meta, days };
+}
+
+// v8.0.2: event レベルのマイグレーション (normalizeTrip から呼ばれる).
+//   旧データの後方互換を全てここに集約する.
+//
+//   変換内容:
+//     1. status 未設定 → 'confirmed' を補う (Phase 1 で導入済み)
+//     2. status === 'tentative' → 'placeholder' に格下げ (v8.0.2 で tentative 廃止)
+//     3. fare {amount, currency} → cost {amount, currency}  (v8.0.2 で名称統合)
+//     4. admission {amount, currency} → cost {amount, currency}  (同上)
+//        ※ fare と admission の両方が存在する破損データに遭遇したら fare を優先
+//
+//   注意: 元 ev は浅いクローン経由でしか触らない (mutation 厳禁).
+function migrateEvent(rawEv) {
+    const ev = Object.assign({}, rawEv);
+
+    // 1 & 2. status の正規化
+    if (!ev.status) {
+        ev.status = 'confirmed';
+    } else if (ev.status === 'tentative') {
+        ev.status = 'placeholder';
+    }
+
+    // 3 & 4. fare / admission → cost への移行
+    //   free type には cost の概念が無いので、移行もしない (もし旧データに
+    //   free.cost が紛れ込んでいたら残るが、UI に影響しないので放置).
+    if (ev.type !== 'free') {
+        if (!ev.cost) {
+            if (ev.fare && (ev.fare.amount != null || ev.fare.amount === 0)) {
+                ev.cost = { amount: ev.fare.amount, currency: ev.fare.currency || '' };
+            } else if (ev.admission && (ev.admission.amount != null || ev.admission.amount === 0)) {
+                ev.cost = { amount: ev.admission.amount, currency: ev.admission.currency || '' };
+            }
+        }
+        // 旧フィールドは削除. Export 時に統一スキーマで出すため.
+        if ('fare' in ev) delete ev.fare;
+        if ('admission' in ev) delete ev.admission;
+    }
+    return ev;
 }
 
 // state.trip を localStorage に永続化する。
@@ -3308,13 +3325,40 @@ function eventStartTime(ev) {
     if (ev.type === 'transport') return ev.from?.time || '';
     if (ev.type === 'place')     return ev.startTime || '';
     if (ev.type === 'lodging')   return ev.checkIn  || '';
+    // v8.0.2: free / event も startTime を持つ.
+    if (ev.type === 'free' || ev.type === 'event') return ev.startTime || '';
     return '';
 }
 function eventEndTime(ev) {
     if (ev.type === 'transport') return ev.to?.time || '';
     if (ev.type === 'place')     return ev.endTime || '';
     if (ev.type === 'lodging')   return ev.checkOut || '';
+    // v8.0.2: free / event も endTime を持つ.
+    if (ev.type === 'free' || ev.type === 'event') return ev.endTime || '';
     return '';
+}
+// v8.0.2: 時刻 setter. ▲▼ の並び替えで時刻を再計算する際に使う.
+//   type ごとに正しいフィールドに書き戻す. 空文字を渡せばクリア.
+//   時刻が無い type (理論上は無いが防御的に) は何もしない.
+function setEventStartTime(ev, hhmm) {
+    if (ev.type === 'transport') {
+        if (!ev.from) ev.from = { name: '', time: '', tz: '' };
+        ev.from.time = hhmm;
+    } else if (ev.type === 'place' || ev.type === 'free' || ev.type === 'event') {
+        ev.startTime = hhmm;
+    } else if (ev.type === 'lodging') {
+        ev.checkIn = hhmm;
+    }
+}
+function setEventEndTime(ev, hhmm) {
+    if (ev.type === 'transport') {
+        if (!ev.to) ev.to = { name: '', time: '', tz: '' };
+        ev.to.time = hhmm;
+    } else if (ev.type === 'place' || ev.type === 'free' || ev.type === 'event') {
+        ev.endTime = hhmm;
+    } else if (ev.type === 'lodging') {
+        ev.checkOut = hhmm;
+    }
 }
 function eventCoords(ev) {
     if (ev.type === 'place'   && ev.coord) return [{ coord: ev.coord, label: ev.name }];
@@ -3554,14 +3598,12 @@ function renderEventCard(ev, evIdx, dayDate) {
     const status = eventStatus(ev, dayDate);
 
     // v8.0.1: ev.status (confirmed / tentative / placeholder) もクラス化.
-    // 時刻ベースの status (past/now/future) とは独立に、見た目の薄字/枠線で表現する.
-    // confirmed は無印 (status-confirmed クラスは付けない)、tentative / placeholder は付ける.
+    // v8.0.2: tentative 廃止. status は 'confirmed' (無印) と 'placeholder' (薄字) の2択.
     const dataStatus = ev.status || 'confirmed';
 
     const item = document.createElement('div');
     let extraStatusClass = '';
-    if (dataStatus === 'tentative') extraStatusClass = ' status-tentative';
-    else if (dataStatus === 'placeholder') extraStatusClass = ' status-placeholder';
+    if (dataStatus === 'placeholder') extraStatusClass = ' status-placeholder';
     item.className = `tl-item cat-${cls} status-${status}${extraStatusClass}`;
     item.dataset.eventIdx = evIdx;
     item.dataset.status = status;
@@ -3650,13 +3692,12 @@ function renderEventCard(ev, evIdx, dayDate) {
         const c = COMPANION_DEF[ev.companion];
         badges.push(`<span class="badge companion-${ev.companion}">${c.icon} ${c.label}</span>`);
     }
-    if (ev.fare?.amount) {
-        // v7.7: fmtMoney で通貨記号化(C$, $, ¥, €など)。
-        badges.push(`<span class="badge fare">${fmtMoney(ev.fare.amount, ev.fare.currency)}</span>`);
-    }
-    if (ev.admission && (ev.admission.amount === 0 || ev.admission.amount)) {
-        const a = ev.admission.amount === 0 ? 'FREE' : fmtMoney(ev.admission.amount, ev.admission.currency);
-        badges.push(`<span class="badge admission">⛛ ${a}</span>`);
+    // v8.0.2: 旧 fare / admission は cost に統合.
+    //   amount === 0 は FREE 表示、それ以外は fmtMoney.
+    //   free type は cost を持たない (migrateEvent で出さない).
+    if (ev.cost && (ev.cost.amount === 0 || ev.cost.amount)) {
+        const a = ev.cost.amount === 0 ? 'FREE' : fmtMoney(ev.cost.amount, ev.cost.currency);
+        badges.push(`<span class="badge cost">💰 ${a}</span>`);
     }
     const badgesHtml = badges.length ? `<div class="card-row">${badges.join('')}</div>` : '';
 
@@ -4905,9 +4946,10 @@ const EVT_CURRENCIES = [
 ];
 
 // status 選択肢
+// v8.0.2: tentative は廃止. confirmed (確定) と placeholder (枠だけ) の2択に簡素化.
+//   旧データの tentative は normalizeTrip で placeholder に格下げされる.
 const EVT_STATUSES = [
     ['confirmed',   'Confirmed'],
-    ['tentative',   'Tentative'],
     ['placeholder', 'Placeholder']
 ];
 
@@ -4962,10 +5004,9 @@ function renderDetailModal() {
         : '<span style="opacity:0.5">—</span>';
 
     // status バッジ
+    // v8.0.2: tentative 廃止. placeholder のみバッジ表示.
     let statusBadge = '';
-    if (ev.status === 'tentative') {
-        statusBadge = '<span class="evt-detail-status-badge tentative">TENTATIVE</span>';
-    } else if (ev.status === 'placeholder') {
+    if (ev.status === 'placeholder') {
         statusBadge = '<span class="evt-detail-status-badge placeholder">PLACEHOLDER</span>';
     }
 
@@ -4994,19 +5035,12 @@ function renderDetailModal() {
         if (ev.mode)      row('Mode', escapeHtml(ev.mode));
         if (ev.carrier)   row('Carrier', escapeHtml(ev.carrier));
         if (ev.routeName) row('Route', escapeHtml(ev.routeName));
-        if (ev.fare?.amount != null && ev.fare.amount !== '') {
-            row('Fare', fmtMoney(ev.fare.amount, ev.fare.currency));
-        }
     } else if (ev.type === 'place') {
         if (ev.category) row('Category', escapeHtml(ev.category));
         if (ev.address)  row('Address', escapeHtml(ev.address));
         if (ev.hours)    row('Hours', escapeHtml(ev.hours));
         if (ev.coord)    row('Coords', `${ev.coord[0].toFixed(4)}°, ${ev.coord[1].toFixed(4)}°`);
         if (ev.purpose)  row('Purpose', escapeHtml(ev.purpose));
-        if (ev.admission && (ev.admission.amount === 0 || ev.admission.amount)) {
-            const a = ev.admission.amount === 0 ? 'FREE' : fmtMoney(ev.admission.amount, ev.admission.currency);
-            row('Admission', a);
-        }
         if (ev.url)      row('Map', `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer">OPEN ↗</a>`);
     } else if (ev.type === 'lodging') {
         if (ev.kind)     row('Kind', escapeHtml(ev.kind));
@@ -5023,9 +5057,21 @@ function renderDetailModal() {
         row('Companion', `${c.icon} ${escapeHtml(c.label)}`);
     }
 
+    // v8.0.2: 旧 Fare / Admission を Cost に統一. type を問わず共通の項目として表示.
+    //   free type は cost を持たない (migrateEvent でも出さない).
+    if (ev.cost && (ev.cost.amount === 0 || ev.cost.amount)) {
+        const a = ev.cost.amount === 0 ? 'FREE' : fmtMoney(ev.cost.amount, ev.cost.currency);
+        row('Cost', a);
+    }
+
+    // v8.0.2: 六角形の色は、CSS の .cat-{cls} クラスから --cat-color が
+    //   設定される仕組み (1524 行〜の定義). 旧 v8.0.1 では inline style に
+    //   var(--cat-{cls}) を直書きしていたが、categoryClass の戻り値 (例:
+    //   'sightseeing') と CSS 変数名 (--cat-sight) のマッピングが取れず、
+    //   全 hex がシアン (fallback) になっていた. クラス指定方式へ修正.
     const detailHtml = `
-        <div class="evt-detail-hex">
-            <div class="tl-hex-wrap" style="--cat-color: var(--cat-${cls}); --cat-glow: rgba(0, 242, 254, 0.45)">
+        <div class="evt-detail-hex cat-${cls}">
+            <div class="tl-hex-wrap">
                 <div class="tl-hex"><div class="icon">${def.icon}</div></div>
                 <div class="hex-tag">${def.label}</div>
             </div>
@@ -5054,8 +5100,13 @@ function renderDetailModal() {
     $('#evt-detail-down').style.opacity = (evIdx >= total - 1) ? '0.3' : '';
 }
 
-async function detailDeleteClicked() {
-    if (!__evtCtx) return;
+// v8.0.2: 削除は編集モーダル側から呼ばれる. create モード時はそもそも削除する対象が
+//   無いのでボタンを非表示にしているが、念のためモード判定で防御.
+//   削除後の遷移:
+//     編集モーダル → 閉じる (force: 変更検知スキップ)
+//     詳細モーダルが (背後で) 開いていたら → それも閉じる
+async function editDeleteClicked() {
+    if (!__evtCtx || __evtEditMode !== 'edit') return;
     const { dayIdx, evIdx, ev } = __evtCtx;
     const label = EVT_TYPE_LABEL[ev.type] || 'event';
     const ok = await ckConfirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`, {
@@ -5064,24 +5115,129 @@ async function detailDeleteClicked() {
     if (!ok) return;
     state.trip.days[dayIdx].events.splice(evIdx, 1);
     persistTrip();
+    // 編集モーダルを閉じる (force: 既に削除済みなので変更検知不要)
+    closeEditModal({ force: true });
+    // 詳細モーダルも閉じる (背後に残っていた場合)
     closeDetailModal();
     renderAll();
     showToast('EVENT DELETED');
 }
 
+// v8.0.2: ▲▼ で並び順を入れ替えた時、時刻を「先頭時刻保持・各所要時間保持」で
+//   再計算する.
+//
+//   例) 元:  [A] 12:00-12:30 (昼食)  [B] 12:30-14:00 (観光)
+//       ▼ で A を下に →
+//       新:  [B] 12:00-13:30 (観光)  [A] 13:30-14:00 (昼食)
+//
+//   実装方針 (2 パス):
+//     パスA. swap 前に各イベントの元 dur (end-start) を記録
+//     パスB. swap 後、各位置のイベントについて:
+//             - 先頭スロット (i==0) の start は元の i==0 の start をそのまま使う
+//             - それ以降は「直前イベントの end」を新 start に使う
+//             - 各位置の end は new start + 元 dur
+//
+//   時刻を持たないイベント (startTime と endTime のどちらかが空) は再計算をスキップし、
+//   時系列にも乗らない (前後の時刻チェーンを断たない).
+//
+//   transport で from/to のタイムゾーンが違う (日付またぎフライト) ような
+//   イベントは特殊だが、再計算は HH:MM ベースで純粋に「壁時計」を動かす.
+//   時差を持つフライトを並び替えで真ん中に挿入する操作は実用上稀なので、
+//   その場合は手動で再編集する前提.
 function detailMoveClicked(direction) {
     if (!__evtCtx) return;
     const { dayIdx, evIdx } = __evtCtx;
     const events = state.trip.days[dayIdx].events;
     const newIdx = evIdx + direction;
     if (newIdx < 0 || newIdx >= events.length) return;
-    // swap
+
+    // パスA: 各イベントの「元 dur」と「元 start」を記録 (swap 前)
+    const origStart = events.map(ev => eventStartTime(ev));
+    const origDur = events.map(ev => {
+        const s = eventStartTime(ev);
+        const e = eventEndTime(ev);
+        return (s && e) ? (hmToMin(e) - hmToMin(s)) : null;
+    });
+
+    // swap. 元 i 番目 → swap 後の origIdxOf(i) 番目.
     [events[evIdx], events[newIdx]] = [events[newIdx], events[evIdx]];
+    const origIdxOf = (i) => {
+        if (i === evIdx) return newIdx;
+        if (i === newIdx) return evIdx;
+        return i;
+    };
+
+    // パスB: 時刻を持つイベントだけ時系列を組み直す.
+    //   firstAnchor: 最初に出会った「時刻を持つイベント」の new start.
+    //                = 元の同位置 i のイベントが持っていた start.
+    //   それ以降は cursor = prevEnd を新 start に使う.
+    let cursor = null;
+    let firstAnchorUsed = false;
+    for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        const origDurI = origDur[origIdxOf(i)];
+        if (origDurI == null) {
+            // このイベントは元々時刻を持たない. 何もしない. cursor も進めない.
+            continue;
+        }
+        let startMin;
+        if (!firstAnchorUsed) {
+            // 最初の「時刻持ち」イベント: スロット i の元 start をアンカーに.
+            //   そのスロットが元々時刻持ちだったなら origStart[i] を使う.
+            //   そうでなければ (歯抜けスロット) 新イベント自身の元 start を使う.
+            startMin = origStart[i] ? hmToMin(origStart[i]) : hmToMin(origStart[origIdxOf(i)] || '00:00');
+            firstAnchorUsed = true;
+        } else {
+            // 2 件目以降は連結
+            startMin = cursor;
+        }
+        const endMin = startMin + origDurI;
+        setEventStartTime(ev, minToHm(startMin));
+        setEventEndTime(ev,   minToHm(endMin));
+        cursor = endMin;
+    }
+
     __evtCtx.evIdx = newIdx;
     __evtCtx.ev = events[newIdx];
     persistTrip();
     renderAll();
     renderDetailModal();
+}
+
+// "HH:MM" → 分. 不正値や空文字は 0 を返す. 24:00 超は許容 (深夜またぎ用).
+function hmToMin(hhmm) {
+    if (!hhmm || typeof hhmm !== 'string') return 0;
+    const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+// 分 → "HH:MM". 負値は 0 にクランプ. 24:00 を超える場合は 24h で mod (深夜またぎ).
+//   ▲▼ 操作で 24h を超えるケースは実用上稀だが、安全のため折り返す.
+function minToHm(min) {
+    if (!Number.isFinite(min)) return '';
+    let m = Math.max(0, Math.round(min));
+    m = m % (24 * 60);
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+
+// "HH:MM" → 分. 不正値や空文字は 0 を返す. 24:00 超は許容 (深夜またぎ用).
+function hmToMin(hhmm) {
+    if (!hhmm || typeof hhmm !== 'string') return 0;
+    const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+// 分 → "HH:MM". 負値は 0 にクランプ. 24:00 を超える場合は 24h で mod (深夜またぎ).
+//   ▲▼ 操作で 24h を超えるケースは実用上稀だが、安全のため折り返す.
+function minToHm(min) {
+    if (!Number.isFinite(min)) return '';
+    let m = Math.max(0, Math.round(min));
+    m = m % (24 * 60);
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
 
 // ──────────────── 編集モーダル ────────────────
@@ -5095,6 +5251,8 @@ function openEditModal(dayIdx, evIdx) {
     __evtDraft = deepClone(ev);
     __evtDraftPristine = JSON.stringify(__evtDraft);
     $('#evt-edit-title').textContent = `EDIT ${EVT_TYPE_LABEL[ev.type] || 'EVENT'}`;
+    // v8.0.2: edit モード時のみ Delete ボタン表示
+    $('#evt-edit-delete').style.display = '';
     renderEditForm();
     $('#evt-edit-modal').classList.add('active');
 }
@@ -5105,6 +5263,8 @@ function openCreateModal(dayIdx, type) {
     __evtDraft = makeDefaultEvent(type, dayIdx);
     __evtDraftPristine = JSON.stringify(__evtDraft);
     $('#evt-edit-title').textContent = `NEW ${EVT_TYPE_LABEL[type] || 'EVENT'}`;
+    // v8.0.2: create モード時は Delete ボタンを隠す (削除する対象がまだ無い)
+    $('#evt-edit-delete').style.display = 'none';
     renderEditForm();
     $('#evt-edit-modal').classList.add('active');
 }
@@ -5135,12 +5295,14 @@ function makeDefaultEvent(type, dayIdx) {
         defaultStart = eventEndTime(prev) || eventStartTime(prev) || '';
     }
     const base = { type, status: 'placeholder' };
+    // v8.0.2: 旧 fare は廃止. cost は空のオブジェクトで初期化し、ユーザーが
+    //   amount を入れた時のみ保存される (cleanDraft で空の cost は削除).
     if (type === 'transport') {
         return Object.assign(base, {
             mode: 'flight', carrier: '', routeName: '',
             from: { name: '', time: defaultStart, tz: '' },
             to:   { name: '', time: '', tz: '' },
-            fare: { amount: '', currency: 'JPY' },
+            cost: { amount: '', currency: 'JPY' },
             companion: '',
             notes: ''
         });
@@ -5149,24 +5311,29 @@ function makeDefaultEvent(type, dayIdx) {
         return Object.assign(base, {
             name: '', category: 'other',
             address: '', startTime: defaultStart, endTime: '',
-            purpose: '', companion: '', notes: ''
+            purpose: '', companion: '',
+            cost: { amount: '', currency: 'JPY' },
+            notes: ''
         });
     }
     if (type === 'lodging') {
         return Object.assign(base, {
             kind: 'hotel', name: '',
             address: '', checkIn: defaultStart, checkOut: '',
+            cost: { amount: '', currency: 'JPY' },
             notes: ''
         });
     }
     if (type === 'free') {
+        // free type は cost を持たない
         return Object.assign(base, {
             startTime: defaultStart, endTime: '', notes: ''
         });
     }
     if (type === 'event') {
         return Object.assign(base, {
-            name: '', startTime: defaultStart, endTime: '', notes: ''
+            name: '', startTime: defaultStart, endTime: '', notes: '',
+            cost: { amount: '', currency: 'JPY' }
         });
     }
     return base;
@@ -5242,12 +5409,30 @@ function coordFieldHtml(path, currentCoord) {
     `;
 }
 
+// v8.0.2: 共通の Cost フィールド (旧 Fare / Admission を統合).
+//   transport / place / lodging / event で使う. free type は呼ばない.
+//   amount 空 → cleanDraft で cost 自体が削除される.
+//   amount 0 → 有効値. カード上は FREE 表示.
+function costFieldHtml(currentCost) {
+    const amt  = (currentCost && currentCost.amount != null) ? currentCost.amount : '';
+    const curr = (currentCost && currentCost.currency) ? currentCost.currency : '';
+    const currOpts = EVT_CURRENCIES.map(c =>
+        `<option value="${c}"${c === curr ? ' selected' : ''}>${c}</option>`
+    ).join('');
+    return `
+        <div class="evt-form-field">
+            <label>Cost</label>
+            <div class="evt-form-fare">
+                <input type="number" step="any" data-field="cost.amount" value="${amt}" placeholder="e.g. 580 (0 = FREE)">
+                <select data-field="cost.currency">${currOpts}</select>
+            </div>
+        </div>
+    `;
+}
+
 function formTransport(ev) {
     const modeOpts = EVT_TRANSPORT_MODES.map(([v, l]) =>
         `<option value="${v}"${v === ev.mode ? ' selected' : ''}>${escapeHtml(l)}</option>`
-    ).join('');
-    const currOpts = EVT_CURRENCIES.map(c =>
-        `<option value="${c}"${c === (ev.fare?.currency || '') ? ' selected' : ''}>${c}</option>`
     ).join('');
     return `
         <div class="evt-form-section">Basics</div>
@@ -5309,13 +5494,7 @@ function formTransport(ev) {
 
         <div class="evt-form-section">Other</div>
         <div class="evt-form-row">
-            <div class="evt-form-field">
-                <label>Fare</label>
-                <div class="evt-form-fare">
-                    <input type="number" step="any" data-field="fare.amount" value="${ev.fare?.amount ?? ''}" placeholder="e.g. 580">
-                    <select data-field="fare.currency">${currOpts}</select>
-                </div>
-            </div>
+            ${costFieldHtml(ev.cost)}
             ${companionFieldHtml(ev.companion)}
         </div>
         ${notesFieldHtml(ev.notes)}
@@ -5371,6 +5550,9 @@ function formPlace(ev) {
             </div>
             ${companionFieldHtml(ev.companion)}
         </div>
+        <div class="evt-form-row">
+            ${costFieldHtml(ev.cost)}
+        </div>
         ${notesFieldHtml(ev.notes)}
     `;
 }
@@ -5416,6 +5598,10 @@ function formLodging(ev) {
         </div>
         ${coordFieldHtml('coord', ev.coord)}
 
+        <div class="evt-form-section">Other</div>
+        <div class="evt-form-row">
+            ${costFieldHtml(ev.cost)}
+        </div>
         ${notesFieldHtml(ev.notes)}
     `;
 }
@@ -5457,6 +5643,9 @@ function formEvent(ev) {
                 <input type="time" data-field="endTime" value="${escapeHtml(ev.endTime || '')}">
             </div>
             ${statusFieldHtml(ev.status)}
+        </div>
+        <div class="evt-form-row">
+            ${costFieldHtml(ev.cost)}
         </div>
         ${notesFieldHtml(ev.notes)}
     `;
@@ -5550,7 +5739,9 @@ function saveEditModal() {
 // draft をクリーンアップ:
 //   - 文字列フィールドの trim
 //   - 空の coord 配列 ([null, null] や [null, 数値]) は削除
-//   - 空の fare ({amount: null, currency: ...}) は currency 残しても amount が null なら fare 自体を削除
+//   - 空の cost ({amount: '', currency: ...}) は cost 自体を削除
+//     (v8.0.2: 旧 fare / admission を統合)
+//   - amount === 0 は有効値 (FREE 表示) として保持
 //   - status が無ければ confirmed
 function cleanDraft(draft) {
     const d = deepClone(draft);
@@ -5559,7 +5750,7 @@ function cleanDraft(draft) {
     for (const k of Object.keys(d)) {
         if (typeof d[k] === 'string') d[k] = d[k].trim();
     }
-    // transport
+    // transport: from/to の正規化
     if (d.type === 'transport') {
         for (const leg of ['from', 'to']) {
             if (!d[leg]) continue;
@@ -5575,15 +5766,6 @@ function cleanDraft(draft) {
                 }
             }
         }
-        // fare: amount が無ければ fare 自体削除
-        if (d.fare) {
-            const amt = d.fare.amount;
-            if (amt === '' || amt == null || !Number.isFinite(Number(amt))) {
-                delete d.fare;
-            } else {
-                d.fare.amount = Number(amt);
-            }
-        }
     }
     // place / lodging の coord
     if (d.type === 'place' || d.type === 'lodging') {
@@ -5592,6 +5774,24 @@ function cleanDraft(draft) {
             if (typeof a !== 'number' || typeof b !== 'number'
                 || !Number.isFinite(a) || !Number.isFinite(b)) {
                 delete d.coord;
+            }
+        }
+    }
+    // v8.0.2: cost のクリーンアップ (旧 fare / admission を統合).
+    //   free type は cost を持たない. 持っていたら削除.
+    //   それ以外の type は amount が空 / 非数値なら cost 自体を削除. 0 は有効値.
+    if (d.type === 'free') {
+        if ('cost' in d) delete d.cost;
+    } else if (d.cost) {
+        const amt = d.cost.amount;
+        if (amt === '' || amt == null) {
+            delete d.cost;
+        } else {
+            const n = Number(amt);
+            if (!Number.isFinite(n)) {
+                delete d.cost;
+            } else {
+                d.cost.amount = n;
             }
         }
     }
@@ -5624,7 +5824,7 @@ function setupEventEditHandlers() {
         //  ここでは UX 簡潔化のため詳細→編集→Save→detail 再描画とする)
         openEditModal(dayIdx, evIdx);
     });
-    $('#evt-detail-delete').addEventListener('click', detailDeleteClicked);
+    // v8.0.2: Delete は編集モーダル側に移動 (詳細モーダルからは廃止)
     $('#evt-detail-up').addEventListener('click',   () => detailMoveClicked(-1));
     $('#evt-detail-down').addEventListener('click', () => detailMoveClicked(+1));
     // バックドロップクリックで閉じる
@@ -5636,6 +5836,8 @@ function setupEventEditHandlers() {
     $('#evt-edit-close').addEventListener('click', () => closeEditModal());
     $('#evt-edit-cancel').addEventListener('click', () => closeEditModal());
     $('#evt-edit-save').addEventListener('click', saveEditModal);
+    // v8.0.2: Delete を編集モーダル内に配置
+    $('#evt-edit-delete').addEventListener('click', editDeleteClicked);
     $('#evt-edit-modal').addEventListener('click', (e) => {
         if (e.target === $('#evt-edit-modal')) closeEditModal();
     });
