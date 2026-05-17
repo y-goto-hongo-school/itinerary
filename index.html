@@ -2358,6 +2358,69 @@ body.has-fullscreen-map {
     transform: translateY(-1px);
 }
 
+/* ──── v8.0.4: Lodgings 一覧モーダル ──── */
+.lodging-list-empty {
+    padding: 22px 16px;
+    text-align: center;
+    color: rgba(226, 232, 240, 0.5);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    border: 1px dashed rgba(226, 232, 240, 0.15);
+    border-radius: 6px;
+}
+.lodging-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--card-glass);
+    border: 1px solid var(--card-border);
+    border-left: 3px solid var(--cat-lodging);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.lodging-row:hover {
+    border-color: var(--accent-cyan);
+    border-left-color: var(--accent-cyan);
+    background: var(--card-glass-hover);
+}
+.lodging-row .lodging-icon {
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.lodging-row .lodging-body {
+    flex: 1;
+    min-width: 0;
+}
+.lodging-row .lodging-name {
+    font-family: var(--text-mono);
+    font-size: 13px;
+    color: rgba(226, 232, 240, 0.95);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lodging-row .lodging-meta {
+    font-family: var(--text-mono);
+    font-size: 10px;
+    color: rgba(226, 232, 240, 0.55);
+    letter-spacing: 0.1em;
+}
+.lodging-row .lodging-arrow {
+    color: rgba(226, 232, 240, 0.3);
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.lodging-row:hover .lodging-arrow {
+    color: var(--accent-cyan);
+}
+
 /* ──── ADD EVENT ボタン (DAY 末尾) ──── */
 .tl-add-event {
     margin: 8px 0 4px;
@@ -2719,11 +2782,46 @@ body.has-fullscreen-map {
         <div class="evt-modal-body">
             <div class="evt-typesel-grid">
                 <button data-type="transport"><span class="icon">✈</span>Transport</button>
-                <button data-type="place"><span class="icon">📍</span>Place</button>
-                <button data-type="lodging"><span class="icon">🛏</span>Lodging</button>
-                <button data-type="free"><span class="icon">◌</span>Free Time</button>
-                <button data-type="event"><span class="icon">◇</span>Event</button>
+                <button data-type="event"><span class="icon">📌</span>Event</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.4: 宿泊先 (lodgings) 管理モーダル.
+     trip.meta.lodgings の CRUD を提供. OPS パネルから開く.
+     既存 evt-modal の階層 (z-index 220) で動作. OPS (110) より上.
+     設計判断: 宿泊先は日々の予定ではなく「期間を持つ拠点情報」なので
+              旅程モーダルとは別ルートで管理する. -->
+<div class="evt-modal" id="lodging-list-modal" role="dialog" aria-modal="true" aria-labelledby="lodging-list-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="lodging-list-title">LODGINGS</div>
+            <button class="evt-modal-close" id="lodging-list-close">CLOSE</button>
+        </div>
+        <div class="evt-modal-body" id="lodging-list-body">
+            <!-- 動的に生成される -->
+        </div>
+        <div class="evt-modal-footer">
+            <button class="primary" id="lodging-list-add">+ ADD LODGING</button>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.4: 宿泊先 編集モーダル. lodging-list-modal から開く.
+     name / kind / dateFrom / dateTo / address / coord / cost / notes を編集. -->
+<div class="evt-modal" id="lodging-edit-modal" role="dialog" aria-modal="true" aria-labelledby="lodging-edit-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="lodging-edit-title">EDIT LODGING</div>
+        </div>
+        <div class="evt-modal-body" id="lodging-edit-body">
+            <!-- 動的に生成される -->
+        </div>
+        <div class="evt-modal-footer">
+            <button class="danger" id="lodging-edit-delete" style="margin-right:auto">DELETE</button>
+            <button id="lodging-edit-cancel">Cancel</button>
+            <button class="primary" id="lodging-edit-save">Save</button>
         </div>
     </div>
 </div>
@@ -2754,7 +2852,7 @@ const CATEGORY_DEF = {
     sport:       { icon: '⚽', label: 'SPORT' },
     sightseeing: { icon: '🏛',  label: 'SIGHT' },
     shopping:    { icon: '🛍',  label: 'SHOP' },
-    other:       { icon: '◇',  label: 'OTHER' },
+    other:       { icon: '📌', label: 'OTHER' },
     free:        { icon: '◌',  label: 'FREE' },
     homestay:    { icon: '🏠', label: 'HOME' },
     hotel:       { icon: '🛏',  label: 'HOTEL' },
@@ -2812,7 +2910,21 @@ const SAMPLE_TRIP = {
         startDate: "2026-07-20",
         endDate: "2026-08-04",
         homeTimezone: "Asia/Tokyo",
-        destTimezone: "America/Vancouver"
+        destTimezone: "America/Vancouver",
+        // v8.0.4: lodging を meta に集約. 旧 type:'lodging' イベント (4 件) を 1 件に統合.
+        //   滞在期間 7/20 (チェックイン) 〜 8/03 (出発当日朝) を 1 件で表現.
+        lodgings: [
+            {
+                id: "lodg_sample_homestay",
+                name: "Host Family Residence",
+                kind: "homestay",
+                address: "",
+                coord: [49.0846, -122.6017],
+                dateFrom: "2026-07-20",
+                dateTo:   "2026-08-03",
+                notes: "Homestay with local host family. Try sharing experiences in English over dinner."
+            }
+        ]
     },
     days: [
         {
@@ -2824,7 +2936,7 @@ const SAMPLE_TRIP = {
                   to:   { name: "Haneda Airport T3", coord: [35.5494, 139.7798], time: "17:30", tz: "Asia/Tokyo" },
                   cost: { amount: 580, currency: "JPY" }, companion: "group",
                   notes: "Meet at 16:00 at the ticket gate. Teacher will hold a placard." },
-                { type: "place", name: "Haneda Airport Terminal 3 (Intl)", category: "other",
+                { type: "event", name: "Haneda Airport Terminal 3 (Intl)", category: "other",
                   coord: [35.5494, 139.7798], address: "2-6-5 Hanedakuko, Ota-ku, Tokyo",
                   startTime: "17:30", endTime: "21:55",
                   purpose: "Check-in, immigration, boarding", companion: "group",
@@ -2836,12 +2948,9 @@ const SAMPLE_TRIP = {
                   notes: "Crosses the International Date Line. In-flight meal provided." },
                 { type: "transport", mode: "bus", carrier: "GPI North America", routeName: "Charter",
                   from: { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "15:30", tz: "America/Vancouver" },
-                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "17:00", tz: "America/Vancouver" },
+                  to:   { name: "Host Family Residence", coord: [49.0846, -122.6017], time: "17:00", tz: "America/Vancouver" },
                   companion: "group",
-                  notes: "Meet local staff, then transfer to homestay area near Vancouver." },
-                { type: "lodging", kind: "homestay", name: "Host Family Residence",
-                  coord: [49.0846, -122.6017], checkIn: "18:30",
-                  notes: "Meet host family, homestay begins. Get plenty of rest after the long flight." }
+                  notes: "Meet local staff, then transfer to homestay area near Vancouver." }
             ]
         },
         {
@@ -2849,7 +2958,7 @@ const SAMPLE_TRIP = {
             summary: "UBC Visit — full day program",
             events: [
                 { type: "transport", mode: "host_car", carrier: "Host Family", routeName: "Drop-off",
-                  from: { name: "Host Home", coord: [49.0846, -122.6017], time: "07:30", tz: "America/Vancouver" },
+                  from: { name: "Host Family Residence", coord: [49.0846, -122.6017], time: "07:30", tz: "America/Vancouver" },
                   to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "08:00", tz: "America/Vancouver" },
                   companion: "host",
                   notes: "Driven by your host family. Don't forget to say thanks." },
@@ -2857,7 +2966,7 @@ const SAMPLE_TRIP = {
                   from: { name: "Study Center", coord: [49.0846, -122.6017], time: "08:30", tz: "America/Vancouver" },
                   to:   { name: "UBC Campus", coord: [49.2606, -123.2460], time: "09:30", tz: "America/Vancouver" },
                   companion: "group" },
-                { type: "place", name: "University of British Columbia (UBC)", category: "study",
+                { type: "event", name: "University of British Columbia (UBC)", category: "study",
                   coord: [49.2606, -123.2460], address: "2329 West Mall, Vancouver, BC V6T 1Z4",
                   startTime: "09:30", endTime: "12:00", hours: "09:00–17:00",
                   cost: { amount: 0, currency: "CAD" },
@@ -2865,7 +2974,7 @@ const SAMPLE_TRIP = {
                   companion: "group",
                   url: "https://maps.google.com/?q=University+of+British+Columbia",
                   notes: "Top-tier Canadian university. Walk the campus with your buddy and try asking questions in English." },
-                { type: "place", name: "UBC Bookstore (Free Time)", category: "shopping",
+                { type: "event", name: "UBC Bookstore (Free Time)", category: "shopping",
                   coord: [49.2647, -123.2520],
                   startTime: "13:00", endTime: "14:30",
                   purpose: "Souvenirs, university merchandise",
@@ -2873,11 +2982,8 @@ const SAMPLE_TRIP = {
                   notes: "Manage your own budget. A real-world chance to practice English at the register." },
                 { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "UBC", coord: [49.2606, -123.2460], time: "14:30", tz: "America/Vancouver" },
-                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "15:30", tz: "America/Vancouver" },
-                  companion: "group" },
-                { type: "lodging", kind: "homestay", name: "Host Family Residence",
-                  coord: [49.0846, -122.6017], checkIn: "16:00",
-                  notes: "Dinner with the host. Try sharing today's experience in English." }
+                  to:   { name: "Host Family Residence", coord: [49.0846, -122.6017], time: "15:30", tz: "America/Vancouver" },
+                  companion: "group" }
             ]
         },
         {
@@ -2885,7 +2991,7 @@ const SAMPLE_TRIP = {
             summary: "Victoria — full day excursion",
             events: [
                 { type: "transport", mode: "bus", carrier: "GPI Charter",
-                  from: { name: "Study Center", coord: [49.0846, -122.6017], time: "07:00", tz: "America/Vancouver" },
+                  from: { name: "Host Family Residence", coord: [49.0846, -122.6017], time: "07:00", tz: "America/Vancouver" },
                   to:   { name: "Tsawwassen Terminal", coord: [49.0058, -123.1330], time: "08:00", tz: "America/Vancouver" },
                   companion: "group" },
                 { type: "transport", mode: "ferry", carrier: "BC Ferries",
@@ -2893,14 +2999,14 @@ const SAMPLE_TRIP = {
                   to:   { name: "Swartz Bay", coord: [48.6886, -123.4108], time: "10:35", tz: "America/Vancouver" },
                   cost: { amount: 18, currency: "CAD" }, companion: "group",
                   notes: "Strait crossing. Step out on deck — orcas are sometimes spotted." },
-                { type: "place", name: "Butchart Gardens", category: "sightseeing",
+                { type: "event", name: "Butchart Gardens", category: "sightseeing",
                   coord: [48.5640, -123.4690], address: "800 Benvenuto Ave, Brentwood Bay, BC",
                   startTime: "11:30", endTime: "13:30", hours: "09:00–22:00",
                   cost: { amount: 38, currency: "CAD" },
                   purpose: "Stroll the world-famous flower garden",
                   companion: "group",
                   url: "https://maps.google.com/?q=Butchart+Gardens" },
-                { type: "place", name: "Inner Harbour (Parliament & Empress)", category: "sightseeing",
+                { type: "event", name: "Inner Harbour (Parliament & Empress)", category: "sightseeing",
                   coord: [48.4194, -123.3700],
                   startTime: "14:30", endTime: "17:00",
                   purpose: "Explore the harbor area, free time",
@@ -2912,20 +3018,20 @@ const SAMPLE_TRIP = {
                   companion: "group" },
                 { type: "transport", mode: "bus", carrier: "GPI Charter",
                   from: { name: "Tsawwassen", coord: [49.0058, -123.1330], time: "19:50", tz: "America/Vancouver" },
-                  to:   { name: "Study Center", coord: [49.0846, -122.6017], time: "20:50", tz: "America/Vancouver" },
-                  companion: "group" },
-                { type: "lodging", kind: "homestay", name: "Host Family Residence",
-                  coord: [49.0846, -122.6017], checkIn: "21:00" }
+                  to:   { name: "Host Family Residence", coord: [49.0846, -122.6017], time: "20:50", tz: "America/Vancouver" },
+                  companion: "group" }
             ]
         },
         {
             date: "2026-08-03", dayLabel: "DAY 15",
             summary: "Farewell to host family — return flight",
             events: [
-                { type: "free", label: "Farewell to host family", companion: "host",
+                { type: "event", name: "Farewell to host family", category: "free",
+                  startTime: "08:00", endTime: "12:00",
+                  companion: "host",
                   notes: "Hand over a thank-you card. Last breakfast." },
                 { type: "transport", mode: "bus", carrier: "GPI Charter",
-                  from: { name: "Study Center", coord: [49.0846, -122.6017], time: "13:30", tz: "America/Vancouver" },
+                  from: { name: "Host Family Residence", coord: [49.0846, -122.6017], time: "13:30", tz: "America/Vancouver" },
                   to:   { name: "Vancouver (YVR)", coord: [49.1939, -123.1844], time: "14:30", tz: "America/Vancouver" },
                   companion: "group" },
                 { type: "transport", mode: "flight", carrier: "ANA", routeName: "NH115",
@@ -2939,7 +3045,7 @@ const SAMPLE_TRIP = {
             date: "2026-08-04", dayLabel: "DAY 16",
             summary: "Arrival at Haneda — dismissal",
             events: [
-                { type: "place", name: "Haneda Airport Terminal 3", category: "other",
+                { type: "event", name: "Haneda Airport Terminal 3", category: "other",
                   coord: [35.5494, 139.7798],
                   startTime: "19:00", endTime: "20:00",
                   purpose: "Arrival, immigration, baggage, dismissal",
@@ -3026,33 +3132,52 @@ function normalizeTrip(raw) {
     const fmt = raw.format;
     if (fmt !== 'trip-v1' && fmt !== 'itn-v1') return null;
     // 浅いクローン経由で正規化 (元オブジェクトを汚さない)
+    // v8.0.4: meta.lodgings を追加. 既存値があればそれを保持.
     const meta = Object.assign({
         title: '', subtitle: '', operator: '',
         origin: '', originAirport: '',
         dest: '', destAirport: '',
         startDate: '', endDate: '',
-        homeTimezone: '', destTimezone: ''
+        homeTimezone: '', destTimezone: '',
+        lodgings: []
     }, raw.meta || {});
+    if (!Array.isArray(meta.lodgings)) meta.lodgings = [];
     const days = raw.days.map(d => ({
         date: d.date || '',
         dayLabel: d.dayLabel || '',
         summary: d.summary || '',
         events: (d.events || []).map(ev => migrateEvent(ev))
     }));
-    return { format: 'trip-v1', meta, days };
+    // v8.0.4: lodging type の集約 (events → meta.lodgings).
+    //   migrateEvent は素通しするので、ここで一括して引き抜く.
+    const interim = { format: 'trip-v1', meta, days };
+    return migrateTrip(interim);
 }
 
 // v8.0.2: event レベルのマイグレーション (normalizeTrip から呼ばれる).
 //   旧データの後方互換を全てここに集約する.
 //
-//   変換内容:
+//   変換内容 (v8.0.2):
 //     1. status 未設定 → 'confirmed' を補う (Phase 1 で導入済み)
 //     2. status === 'tentative' → 'placeholder' に格下げ (v8.0.2 で tentative 廃止)
 //     3. fare {amount, currency} → cost {amount, currency}  (v8.0.2 で名称統合)
 //     4. admission {amount, currency} → cost {amount, currency}  (同上)
 //        ※ fare と admission の両方が存在する破損データに遭遇したら fare を優先
 //
+//   v8.0.4 追加変換 (type 統合):
+//     5. type === 'place' → type === 'event' に統合
+//        - category はそのまま. name/coord/address/hours/startTime/endTime/purpose/companion/notes/cost
+//          は event の新スキーマ上にもそのまま乗る (フィールド名同じ).
+//     6. type === 'free' → type === 'event', category === 'free'
+//        - 旧 free は label フィールドで名前を持っていた → name に rename
+//        - cost は持たなかったので付けない (空のままが正しい)
+//     7. type === 'event' で category 無し → category = 'other' を補う
+//     8. type === 'lodging' はここでは触らない (migrateTrip 側で events から
+//        引き抜いて trip.meta.lodgings に集約する).
+//
 //   注意: 元 ev は浅いクローン経由でしか触らない (mutation 厳禁).
+//   注意 2: lodging は migrateTrip 側で扱う. このため migrateEvent は
+//          lodging を受け取っても素通しする (events 配列に残れば後段で異常).
 function migrateEvent(rawEv) {
     const ev = Object.assign({}, rawEv);
 
@@ -3063,22 +3188,131 @@ function migrateEvent(rawEv) {
         ev.status = 'placeholder';
     }
 
+    // v8.0.4: 5. place → event 統合
+    if (ev.type === 'place') {
+        ev.type = 'event';
+        // category はそのまま. 念のため未設定なら other を補う
+        if (!ev.category) ev.category = 'other';
+    }
+    // v8.0.4: 6. free → event(category:'free') 統合
+    else if (ev.type === 'free') {
+        ev.type = 'event';
+        ev.category = 'free';
+        // 旧 free は label に名前を持っていた → name に移行
+        if (ev.label && !ev.name) {
+            ev.name = ev.label;
+        }
+        if ('label' in ev) delete ev.label;
+    }
+    // v8.0.4: 7. event で category 無し → other 補完
+    else if (ev.type === 'event') {
+        if (!ev.category) ev.category = 'other';
+    }
+    // transport / lodging はここでは category を補わない
+    // (transport は mode、lodging は kind で代用. lodging は後段で events から除去される)
+
     // 3 & 4. fare / admission → cost への移行
-    //   free type には cost の概念が無いので、移行もしない (もし旧データに
-    //   free.cost が紛れ込んでいたら残るが、UI に影響しないので放置).
-    if (ev.type !== 'free') {
-        if (!ev.cost) {
-            if (ev.fare && (ev.fare.amount != null || ev.fare.amount === 0)) {
-                ev.cost = { amount: ev.fare.amount, currency: ev.fare.currency || '' };
-            } else if (ev.admission && (ev.admission.amount != null || ev.admission.amount === 0)) {
-                ev.cost = { amount: ev.admission.amount, currency: ev.admission.currency || '' };
+    //   v8.0.4: 旧 free (現 event/category:'free') にも cost を許容する設計に変更.
+    //   ただし旧データの free.cost (もしあれば) は破棄せず維持する.
+    //   transport / event いずれも cost を持つ可能性がある.
+    if (!ev.cost) {
+        if (ev.fare && (ev.fare.amount != null || ev.fare.amount === 0)) {
+            ev.cost = { amount: ev.fare.amount, currency: ev.fare.currency || '' };
+        } else if (ev.admission && (ev.admission.amount != null || ev.admission.amount === 0)) {
+            ev.cost = { amount: ev.admission.amount, currency: ev.admission.currency || '' };
+        }
+    }
+    // 旧フィールドは削除. Export 時に統一スキーマで出すため.
+    if ('fare' in ev) delete ev.fare;
+    if ('admission' in ev) delete ev.admission;
+
+    return ev;
+}
+
+// v8.0.4: trip レベルのマイグレーション.
+//   lodging type を events から抜き出し、trip.meta.lodgings に集約する.
+//
+//   設計判断 (HANDOVER §5.4):
+//     - lodging は「期間を持つ拠点情報」であって日々の予定ではない.
+//     - 「7/26〜8/3 はこのホテル」のような滞在期間を 1 件で表現する方が自然.
+//     - 旅程カード上には毎日 lodging が出ない方が見やすい.
+//     - transport の to/from name は文字列なので、宿泊先名を直接入れて参照する.
+//
+//   集約ロジック:
+//     1. 各 day の events から type:'lodging' を抽出.
+//     2. name + kind + address + coord が同じものは「同じ宿」とみなし、
+//        dateFrom / dateTo を range にまとめる (1 件にまとめる).
+//     3. trip.meta.lodgings = [{ id, name, kind, address, coord, dateFrom, dateTo, cost, notes }, ...]
+//
+//   注意: 引数 trip は浅いクローン経由でしか触らない.
+//   注意 2: meta.lodgings が既に存在する場合は上書きせず、旧 events 由来分を
+//          追記する (既存ユーザーが手動で meta.lodgings を編集したケースを保護).
+function migrateTrip(trip) {
+    if (!trip || !Array.isArray(trip.days)) return trip;
+
+    // 既存の meta.lodgings (あれば) を起点に
+    const lodgings = Array.isArray(trip.meta?.lodgings)
+        ? trip.meta.lodgings.map(l => Object.assign({}, l))
+        : [];
+
+    // 同一性判定 (name + kind + address)
+    function findExisting(target) {
+        const tName = (target.name || '').trim();
+        const tKind = (target.kind || '').trim();
+        const tAddr = (target.address || '').trim();
+        return lodgings.find(l =>
+            (l.name || '').trim() === tName &&
+            (l.kind || '').trim() === tKind &&
+            (l.address || '').trim() === tAddr
+        );
+    }
+
+    function genId() {
+        return 'lodg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+    }
+
+    // 各 day をスキャン: lodging を抜き出し、meta に集約
+    const newDays = trip.days.map(d => {
+        const newEvents = [];
+        for (const ev of (d.events || [])) {
+            if (ev.type === 'lodging') {
+                // 集約処理
+                const existing = findExisting(ev);
+                if (existing) {
+                    // dateFrom/dateTo を拡張
+                    if (d.date) {
+                        if (!existing.dateFrom || d.date < existing.dateFrom) existing.dateFrom = d.date;
+                        if (!existing.dateTo   || d.date > existing.dateTo)   existing.dateTo   = d.date;
+                    }
+                } else {
+                    lodgings.push({
+                        id: genId(),
+                        name: ev.name || '',
+                        kind: ev.kind || 'hotel',
+                        address: ev.address || '',
+                        coord: Array.isArray(ev.coord) ? ev.coord.slice() : null,
+                        dateFrom: d.date || '',
+                        dateTo:   d.date || '',
+                        cost: ev.cost || null,
+                        notes: ev.notes || ''
+                    });
+                }
+                // この lodging は events から除去 (= newEvents に push しない)
+            } else {
+                newEvents.push(ev);
             }
         }
-        // 旧フィールドは削除. Export 時に統一スキーマで出すため.
-        if ('fare' in ev) delete ev.fare;
-        if ('admission' in ev) delete ev.admission;
+        return Object.assign({}, d, { events: newEvents });
+    });
+
+    // null の coord を削除 (空配列扱いになるのを防ぐ)
+    for (const l of lodgings) {
+        if (!Array.isArray(l.coord) || l.coord.length !== 2) delete l.coord;
+        if (!l.cost) delete l.cost;
     }
-    return ev;
+
+    const newMeta = Object.assign({}, trip.meta || {}, { lodgings });
+    return Object.assign({}, trip, { meta: newMeta, days: newDays });
 }
 
 // state.trip を localStorage に永続化する。
@@ -3314,37 +3548,44 @@ async function confirmDestructive(msg) {
 }
 
 // ──────────────── イベントの便利アクセサ ────────────────
+// v8.0.4: type 統合に伴い分岐を簡素化.
+//   place / lodging / free はもう events に出現しない (migrate で event に変換).
+//   ただし旧バージョン中間状態の防御として一応 fallback は残す.
 function eventCategory(ev) {
+    if (ev.type === 'transport') return ev.mode || 'other';
+    if (ev.type === 'event')     return ev.category || 'other';
+    // 防御 (本来は migrate 後に来ない)
     if (ev.type === 'place')     return ev.category || 'other';
     if (ev.type === 'lodging')   return ev.kind || 'hotel';
-    if (ev.type === 'transport') return ev.mode || 'other';
     if (ev.type === 'free')      return 'free';
     return 'other';
 }
 function eventStartTime(ev) {
     if (ev.type === 'transport') return ev.from?.time || '';
+    if (ev.type === 'event')     return ev.startTime || '';
+    // 防御 (旧スキーマ fallback)
     if (ev.type === 'place')     return ev.startTime || '';
     if (ev.type === 'lodging')   return ev.checkIn  || '';
-    // v8.0.2: free / event も startTime を持つ.
-    if (ev.type === 'free' || ev.type === 'event') return ev.startTime || '';
+    if (ev.type === 'free')      return ev.startTime || '';
     return '';
 }
 function eventEndTime(ev) {
     if (ev.type === 'transport') return ev.to?.time || '';
+    if (ev.type === 'event')     return ev.endTime || '';
+    // 防御 (旧スキーマ fallback)
     if (ev.type === 'place')     return ev.endTime || '';
     if (ev.type === 'lodging')   return ev.checkOut || '';
-    // v8.0.2: free / event も endTime を持つ.
-    if (ev.type === 'free' || ev.type === 'event') return ev.endTime || '';
+    if (ev.type === 'free')      return ev.endTime || '';
     return '';
 }
 // v8.0.2: 時刻 setter. ▲▼ の並び替えで時刻を再計算する際に使う.
 //   type ごとに正しいフィールドに書き戻す. 空文字を渡せばクリア.
-//   時刻が無い type (理論上は無いが防御的に) は何もしない.
+//   v8.0.4: event 統合後は transport と event のみが正規. 旧 type は防御として残置.
 function setEventStartTime(ev, hhmm) {
     if (ev.type === 'transport') {
         if (!ev.from) ev.from = { name: '', time: '', tz: '' };
         ev.from.time = hhmm;
-    } else if (ev.type === 'place' || ev.type === 'free' || ev.type === 'event') {
+    } else if (ev.type === 'event' || ev.type === 'place' || ev.type === 'free') {
         ev.startTime = hhmm;
     } else if (ev.type === 'lodging') {
         ev.checkIn = hhmm;
@@ -3354,13 +3595,15 @@ function setEventEndTime(ev, hhmm) {
     if (ev.type === 'transport') {
         if (!ev.to) ev.to = { name: '', time: '', tz: '' };
         ev.to.time = hhmm;
-    } else if (ev.type === 'place' || ev.type === 'free' || ev.type === 'event') {
+    } else if (ev.type === 'event' || ev.type === 'place' || ev.type === 'free') {
         ev.endTime = hhmm;
     } else if (ev.type === 'lodging') {
         ev.checkOut = hhmm;
     }
 }
 function eventCoords(ev) {
+    // v8.0.4: event 統合後は event の coord を参照. place/lodging は防御 fallback.
+    if (ev.type === 'event'   && ev.coord) return [{ coord: ev.coord, label: ev.name }];
     if (ev.type === 'place'   && ev.coord) return [{ coord: ev.coord, label: ev.name }];
     if (ev.type === 'lodging' && ev.coord) return [{ coord: ev.coord, label: ev.name }];
     if (ev.type === 'transport') {
@@ -3626,7 +3869,7 @@ function renderEventCard(ev, evIdx, dayDate) {
 
     // カード
     const isTransport = ev.type === 'transport';
-    const isLodging = ev.type === 'lodging';
+    // v8.0.4: isLodging は廃止 (lodging は events に出ない). 防御 fallback として残置の必要なし.
     const card = document.createElement('div');
     card.className = `tl-card${isTransport ? ' transport-card' : ''}`;
 
@@ -3662,12 +3905,8 @@ function renderEventCard(ev, evIdx, dayDate) {
 
     // v8.0.1: placeholder 状態のカード名は "✈ TBD" のような簡略表示
     // (設計編 §5-A / HANDOVER §5.2-5).
-    // 型ごとに区別:
-    //   transport → "✈ TBD" など mode のアイコン+TBD
-    //   place     → "📍 TBD"
-    //   lodging   → "🛏 TBD"
-    //   free      → "◌ TBD"
-    //   event     → "◇ TBD"
+    // v8.0.4: event 統合後は category 別アイコン (def.icon) で TBD 表示.
+    //   例: transport → "✈ TBD" / event(sightseeing) → "🏛 TBD" / event(free) → "◌ TBD"
     if (dataStatus === 'placeholder' && !cardName.replace(/—/g, '').trim()) {
         cardName = `${def.icon} TBD`;
     } else if (dataStatus === 'placeholder' && (cardName === '—' || cardName === def.label)) {
@@ -3683,7 +3922,8 @@ function renderEventCard(ev, evIdx, dayDate) {
         metaHtml = `<div class="card-meta"><div class="leg"><strong>${escapeHtml(ev.from?.name || '—')}</strong> <span class="arrow">▶▶</span> <strong>${escapeHtml(ev.to?.name || '—')}</strong></div></div>`;
     } else if (ev.purpose) {
         metaHtml = `<div class="card-meta">${escapeHtml(ev.purpose)}</div>`;
-    } else if (ev.notes && ev.type === 'free') {
+    } else if (ev.notes && ev.type === 'event' && ev.category === 'free') {
+        // v8.0.4: 旧 free type 相当. category:'free' の event は notes をカードに出す.
         metaHtml = `<div class="card-meta">${escapeHtml(ev.notes)}</div>`;
     }
 
@@ -4326,22 +4566,26 @@ function placeColor(cat) {
     return m[cat] || { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.5)' };
 }
 // イベントの代表色を返す
+// v8.0.4: event 統合後は ev.category をベースに. lodging / place は防御 fallback.
 function eventMarkerColor(ev, leg) {
     if (ev.type === 'transport') {
         // transport は from / to 両方に同色マーカー(移動手段の色)
         return modeColor(ev.mode);
     }
+    if (ev.type === 'event')   return placeColor(ev.category);
+    // 防御 fallback
     if (ev.type === 'lodging') return { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.5)' };
     if (ev.type === 'place')   return placeColor(ev.category);
     return { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.5)' };
 }
 
-// マーカー統合時の代表選定優先度:place > lodging > transport
-// 「ここで何が起こるか」が一番重要なので、実体のあるplace(訪問先)が最優先。
-// 次いで宿泊、最後に通過点としての交通機関。
+// マーカー統合時の代表選定優先度.
+// v8.0.4: 旧 place の優先度 3 を event が継承. 「ここで何が起こるか」を最優先.
+// transport は通過点なので 1. lodging は events からは消えるが防御で 2.
 function priorityOf(ev) {
-    if (ev.type === 'place')     return 3;
-    if (ev.type === 'lodging')   return 2;
+    if (ev.type === 'event')     return 3;
+    if (ev.type === 'place')     return 3;  // 防御
+    if (ev.type === 'lodging')   return 2;  // 防御
     if (ev.type === 'transport') return 1;
     return 0;
 }
@@ -4419,11 +4663,15 @@ function drawMap() {
     if (!day) return;
 
     // その日のwaypoint一覧を作る:eventIdx + legも持たせて、双方向リンクできるようにする
+    // v8.0.4: place → event 統合. event は coord を持てば waypoint 化.
+    //   lodging は events から消えているので防御 fallback として残置.
     const wps = [];   // { lat, lng, label, eventIdx, leg, ev }
     (day.events || []).forEach((ev, eventIdx) => {
-        if (ev.type === 'place' && ev.coord) {
+        if (ev.type === 'event' && ev.coord) {
+            wps.push({ lat: ev.coord[0], lng: ev.coord[1], label: ev.name, eventIdx, leg: 'event', ev });
+        } else if (ev.type === 'place' && ev.coord) {  // 防御 fallback
             wps.push({ lat: ev.coord[0], lng: ev.coord[1], label: ev.name, eventIdx, leg: 'place', ev });
-        } else if (ev.type === 'lodging' && ev.coord) {
+        } else if (ev.type === 'lodging' && ev.coord) {  // 防御 fallback
             wps.push({ lat: ev.coord[0], lng: ev.coord[1], label: ev.name, eventIdx, leg: 'lodging', ev });
         } else if (ev.type === 'transport') {
             if (ev.from?.coord) wps.push({ lat: ev.from.coord[0], lng: ev.from.coord[1], label: ev.from.name, eventIdx, leg: 'from', ev });
@@ -4887,12 +5135,17 @@ let __evtDraftPristine = null;
 // 編集モーダルを開いた時点の draft の JSON 文字列 (変更検知用)
 
 // type 別の表示ラベル
+// v8.0.4: place/lodging/free type を廃止し、event に統合.
+//   lodging は trip.meta.lodgings に移動 (events からは消える).
+//   ただし旧データの fallback として place/lodging/free のラベルは残す.
+//   通常運用では transport / event の 2 つのみが使われる.
 const EVT_TYPE_LABEL = {
     transport: 'TRANSPORT',
+    event:     'EVENT',
+    // 旧データ後方互換 (normalizeTrip 前に表示される可能性は理論上ないが防御)
     place:     'PLACE',
     lodging:   'LODGING',
-    free:      'FREE TIME',
-    event:     'EVENT'
+    free:      'FREE TIME'
 };
 
 // transport の mode 選択肢
@@ -4907,8 +5160,11 @@ const EVT_TRANSPORT_MODES = [
     ['walk',     '🚶 Walk']
 ];
 
-// place の category 選択肢 (CATEGORY_DEF と整合)
-const EVT_PLACE_CATEGORIES = [
+// event の category 選択肢 (CATEGORY_DEF と整合)
+// v8.0.4: EVT_PLACE_CATEGORIES から rename. free を追加.
+//   place type 廃止に伴い、event 統合スキーマの category 選択肢に.
+//   other のアイコンは 📌 (push pin) に変更. ◇ は意味が抽象的すぎたため.
+const EVT_EVENT_CATEGORIES = [
     ['play',        '🎢 Play'],
     ['study',       '🎓 Study'],
     ['rest',        '🌙 Rest'],
@@ -4917,7 +5173,8 @@ const EVT_PLACE_CATEGORIES = [
     ['sport',       '⚽ Sport'],
     ['sightseeing', '🏛 Sight'],
     ['shopping',    '🛍 Shop'],
-    ['other',       '◇ Other']
+    ['free',        '◌ Free Time'],
+    ['other',       '📌 Other']
 ];
 
 // lodging の kind 選択肢
@@ -4979,7 +5236,13 @@ function renderDetailModal() {
     const endT = eventEndTime(ev);
 
     // タイトル
-    $('#evt-detail-title').textContent = EVT_TYPE_LABEL[ev.type] || 'EVENT';
+    // v8.0.4: event 型はカテゴリ名で具体化 (e.g. "SIGHT" / "STUDY"). transport はそのまま.
+    let titleText = EVT_TYPE_LABEL[ev.type] || 'EVENT';
+    if (ev.type === 'event' && ev.category) {
+        const catDef = CATEGORY_DEF[ev.category];
+        if (catDef) titleText = catDef.label;
+    }
+    $('#evt-detail-title').textContent = titleText;
 
     // メイン情報の組み立て
     let nameText = '';
@@ -5035,7 +5298,21 @@ function renderDetailModal() {
         if (ev.mode)      row('Mode', escapeHtml(ev.mode));
         if (ev.carrier)   row('Carrier', escapeHtml(ev.carrier));
         if (ev.routeName) row('Route', escapeHtml(ev.routeName));
+    } else if (ev.type === 'event') {
+        // v8.0.4: place / free を統合した新スキーマ.
+        //   coord/address/hours/purpose は任意フィールド. category は必須.
+        if (ev.category) {
+            const catDef = CATEGORY_DEF[ev.category];
+            const catLabel = catDef ? `${catDef.icon} ${catDef.label}` : ev.category;
+            row('Category', escapeHtml(catLabel));
+        }
+        if (ev.address)  row('Address', escapeHtml(ev.address));
+        if (ev.hours)    row('Hours', escapeHtml(ev.hours));
+        if (ev.coord)    row('Coords', `${ev.coord[0].toFixed(4)}°, ${ev.coord[1].toFixed(4)}°`);
+        if (ev.purpose)  row('Purpose', escapeHtml(ev.purpose));
+        if (ev.url)      row('Map', `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer">OPEN ↗</a>`);
     } else if (ev.type === 'place') {
+        // 防御 fallback (v8.0.4 で正規の events に出ないはず)
         if (ev.category) row('Category', escapeHtml(ev.category));
         if (ev.address)  row('Address', escapeHtml(ev.address));
         if (ev.hours)    row('Hours', escapeHtml(ev.hours));
@@ -5043,13 +5320,12 @@ function renderDetailModal() {
         if (ev.purpose)  row('Purpose', escapeHtml(ev.purpose));
         if (ev.url)      row('Map', `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer">OPEN ↗</a>`);
     } else if (ev.type === 'lodging') {
+        // 防御 fallback
         if (ev.kind)     row('Kind', escapeHtml(ev.kind));
         if (ev.address)  row('Address', escapeHtml(ev.address));
         if (ev.coord)    row('Coords', `${ev.coord[0].toFixed(4)}°, ${ev.coord[1].toFixed(4)}°`);
     } else if (ev.type === 'free') {
-        // free は時刻と notes のみ
-    } else if (ev.type === 'event') {
-        // event も時刻と name と notes のみ
+        // 防御 fallback. free は時刻と notes のみ
     }
 
     if (ev.companion && COMPANION_DEF[ev.companion]) {
@@ -5108,7 +5384,8 @@ function renderDetailModal() {
 async function editDeleteClicked() {
     if (!__evtCtx || __evtEditMode !== 'edit') return;
     const { dayIdx, evIdx, ev } = __evtCtx;
-    const label = EVT_TYPE_LABEL[ev.type] || 'event';
+    // v8.0.4: ラベルを eventTitleText で統一. event はカテゴリ名で具体化.
+    const label = eventTitleText(ev);
     const ok = await ckConfirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`, {
         danger: true, okText: 'DELETE'
     });
@@ -5241,6 +5518,16 @@ function minToHm(min) {
 }
 
 // ──────────────── 編集モーダル ────────────────
+// v8.0.4: タイトル決定の共通ヘルパー. event 型はカテゴリ名で具体化.
+function eventTitleText(ev) {
+    if (!ev) return 'EVENT';
+    if (ev.type === 'event' && ev.category) {
+        const catDef = CATEGORY_DEF[ev.category];
+        if (catDef) return catDef.label;
+    }
+    return EVT_TYPE_LABEL[ev.type] || 'EVENT';
+}
+
 function openEditModal(dayIdx, evIdx) {
     const day = state.trip?.days?.[dayIdx];
     if (!day) return;
@@ -5250,7 +5537,7 @@ function openEditModal(dayIdx, evIdx) {
     __evtEditMode = 'edit';
     __evtDraft = deepClone(ev);
     __evtDraftPristine = JSON.stringify(__evtDraft);
-    $('#evt-edit-title').textContent = `EDIT ${EVT_TYPE_LABEL[ev.type] || 'EVENT'}`;
+    $('#evt-edit-title').textContent = `EDIT ${eventTitleText(ev)}`;
     // v8.0.2: edit モード時のみ Delete ボタン表示
     $('#evt-edit-delete').style.display = '';
     renderEditForm();
@@ -5262,7 +5549,9 @@ function openCreateModal(dayIdx, type) {
     __evtEditMode = 'create';
     __evtDraft = makeDefaultEvent(type, dayIdx);
     __evtDraftPristine = JSON.stringify(__evtDraft);
-    $('#evt-edit-title').textContent = `NEW ${EVT_TYPE_LABEL[type] || 'EVENT'}`;
+    // v8.0.4: 新規 event は default category='other' なので、その表示 (OTHER) でタイトル化.
+    //   category 変更後にタイトルを動的更新する仕組みも考えたが、UI が落ち着かないので静的でよい.
+    $('#evt-edit-title').textContent = `NEW ${eventTitleText(__evtDraft)}`;
     // v8.0.2: create モード時は Delete ボタンを隠す (削除する対象がまだ無い)
     $('#evt-edit-delete').style.display = 'none';
     renderEditForm();
@@ -5295,8 +5584,8 @@ function makeDefaultEvent(type, dayIdx) {
         defaultStart = eventEndTime(prev) || eventStartTime(prev) || '';
     }
     const base = { type, status: 'placeholder' };
-    // v8.0.2: 旧 fare は廃止. cost は空のオブジェクトで初期化し、ユーザーが
-    //   amount を入れた時のみ保存される (cleanDraft で空の cost は削除).
+    // v8.0.4: place / lodging / free 廃止. transport / event のみ.
+    //   event は category 必須. coord/address/hours は任意フィールド.
     if (type === 'transport') {
         return Object.assign(base, {
             mode: 'flight', carrier: '', routeName: '',
@@ -5307,7 +5596,7 @@ function makeDefaultEvent(type, dayIdx) {
             notes: ''
         });
     }
-    if (type === 'place') {
+    if (type === 'event') {
         return Object.assign(base, {
             name: '', category: 'other',
             address: '', startTime: defaultStart, endTime: '',
@@ -5316,26 +5605,7 @@ function makeDefaultEvent(type, dayIdx) {
             notes: ''
         });
     }
-    if (type === 'lodging') {
-        return Object.assign(base, {
-            kind: 'hotel', name: '',
-            address: '', checkIn: defaultStart, checkOut: '',
-            cost: { amount: '', currency: 'JPY' },
-            notes: ''
-        });
-    }
-    if (type === 'free') {
-        // free type は cost を持たない
-        return Object.assign(base, {
-            startTime: defaultStart, endTime: '', notes: ''
-        });
-    }
-    if (type === 'event') {
-        return Object.assign(base, {
-            name: '', startTime: defaultStart, endTime: '', notes: '',
-            cost: { amount: '', currency: 'JPY' }
-        });
-    }
+    // 旧 type が誤って呼ばれた場合の防御 (理論上は来ない)
     return base;
 }
 
@@ -5344,15 +5614,17 @@ function deepClone(o) {
 }
 
 // フォーム生成 — type 別に DOM を組み立てる
+// v8.0.4: place/lodging/free type 廃止. transport と event のみ.
+//   旧データの編集で type:'place'/'free'/'lodging' が来た場合は防御 fallback.
 function renderEditForm() {
     const ev = __evtDraft;
     if (!ev) return;
     let html = '';
     if (ev.type === 'transport') html = formTransport(ev);
-    else if (ev.type === 'place') html = formPlace(ev);
-    else if (ev.type === 'lodging') html = formLodging(ev);
-    else if (ev.type === 'free') html = formFree(ev);
     else if (ev.type === 'event') html = formEvent(ev);
+    // 防御 fallback (本来は migrate 済みなので来ないはず)
+    else if (ev.type === 'place') html = formEvent(ev);
+    else if (ev.type === 'free') html = formEvent(ev);
     else html = '<div style="color: var(--accent-warning)">Unknown event type</div>';
     $('#evt-edit-body').innerHTML = html;
     attachFormHandlers();
@@ -5434,7 +5706,20 @@ function formTransport(ev) {
     const modeOpts = EVT_TRANSPORT_MODES.map(([v, l]) =>
         `<option value="${v}"${v === ev.mode ? ' selected' : ''}>${escapeHtml(l)}</option>`
     ).join('');
+    // v8.0.4: 宿泊先名を datalist で from.name / to.name の候補として提示.
+    //   ユーザー要望「transport で行先候補として宿泊先名が出せると楽」に対応.
+    //   list 属性で <datalist> に紐付け. 自由入力は変わらず可能.
+    const lodgings = getLodgings();
+    const lodgingOpts = lodgings
+        .filter(l => l.name && l.name.trim())
+        .map(l => `<option value="${escapeHtml(l.name)}">`)
+        .join('');
+    const datalistHtml = lodgingOpts
+        ? `<datalist id="transport-place-list">${lodgingOpts}</datalist>`
+        : '';
+    const listAttr = lodgingOpts ? ' list="transport-place-list"' : '';
     return `
+        ${datalistHtml}
         <div class="evt-form-section">Basics</div>
         <div class="evt-form-row">
             <div class="evt-form-field">
@@ -5458,7 +5743,7 @@ function formTransport(ev) {
         <div class="evt-form-row">
             <div class="evt-form-field">
                 <label>Name</label>
-                <input type="text" data-field="from.name" value="${escapeHtml(ev.from?.name || '')}" placeholder="e.g. Haneda (HND)">
+                <input type="text" data-field="from.name"${listAttr} value="${escapeHtml(ev.from?.name || '')}" placeholder="e.g. Haneda (HND)">
             </div>
             <div class="evt-form-field">
                 <label>Time</label>
@@ -5477,7 +5762,7 @@ function formTransport(ev) {
         <div class="evt-form-row">
             <div class="evt-form-field">
                 <label>Name</label>
-                <input type="text" data-field="to.name" value="${escapeHtml(ev.to?.name || '')}" placeholder="e.g. Vancouver (YVR)">
+                <input type="text" data-field="to.name"${listAttr} value="${escapeHtml(ev.to?.name || '')}" placeholder="e.g. Vancouver (YVR)">
             </div>
             <div class="evt-form-field">
                 <label>Time</label>
@@ -5501,16 +5786,27 @@ function formTransport(ev) {
     `;
 }
 
-function formPlace(ev) {
-    const catOpts = EVT_PLACE_CATEGORIES.map(([v, l]) =>
-        `<option value="${v}"${v === ev.category ? ' selected' : ''}>${escapeHtml(l)}</option>`
+// v8.0.4: formPlace / formLodging / formFree は削除. formEvent に統合.
+//   旧 formPlace のフィールド (category, address, hours, coord, purpose) と
+//   旧 formFree (時刻のみ) と 旧 formEvent (名前+時刻+cost) を全て吸収.
+//   lodging は trip.meta.lodgings に移動したので、events 内では編集しない.
+
+function formEvent(ev) {
+    // v8.0.4: 完全統合フォーム.
+    //   - Basics: name (必須), category (必須), status
+    //   - Time: startTime, endTime
+    //   - Location: address, coord, hours, url (任意, opt-in 表示)
+    //   - Other: purpose, companion, cost
+    //   - Notes
+    const catOpts = EVT_EVENT_CATEGORIES.map(([v, l]) =>
+        `<option value="${v}"${v === (ev.category || 'other') ? ' selected' : ''}>${escapeHtml(l)}</option>`
     ).join('');
     return `
         <div class="evt-form-section">Basics</div>
         <div class="evt-form-row">
             <div class="evt-form-field full">
                 <label>Name</label>
-                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="e.g. Butchart Gardens">
+                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="e.g. Butchart Gardens, Free Time">
             </div>
         </div>
         <div class="evt-form-row">
@@ -5533,116 +5829,32 @@ function formPlace(ev) {
             </div>
         </div>
 
-        <div class="evt-form-section">Location</div>
+        <div class="evt-form-section">Location (optional)</div>
         <div class="evt-form-row">
             <div class="evt-form-field full">
                 <label>Address</label>
-                <input type="text" data-field="address" value="${escapeHtml(ev.address || '')}" placeholder="Street, city, region">
+                <input type="text" data-field="address" value="${escapeHtml(ev.address || '')}" placeholder="Street, city, region (optional)">
             </div>
         </div>
         ${coordFieldHtml('coord', ev.coord)}
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Hours</label>
+                <input type="text" data-field="hours" value="${escapeHtml(ev.hours || '')}" placeholder="e.g. 09:00–17:00">
+            </div>
+            <div class="evt-form-field">
+                <label>Map URL</label>
+                <input type="url" data-field="url" value="${escapeHtml(ev.url || '')}" placeholder="https://maps.google.com/...">
+            </div>
+        </div>
 
         <div class="evt-form-section">Other</div>
         <div class="evt-form-row">
             <div class="evt-form-field">
                 <label>Purpose</label>
-                <input type="text" data-field="purpose" value="${escapeHtml(ev.purpose || '')}" placeholder="Why you're going">
+                <input type="text" data-field="purpose" value="${escapeHtml(ev.purpose || '')}" placeholder="Why you're going (optional)">
             </div>
             ${companionFieldHtml(ev.companion)}
-        </div>
-        <div class="evt-form-row">
-            ${costFieldHtml(ev.cost)}
-        </div>
-        ${notesFieldHtml(ev.notes)}
-    `;
-}
-
-function formLodging(ev) {
-    const kindOpts = EVT_LODGING_KINDS.map(([v, l]) =>
-        `<option value="${v}"${v === ev.kind ? ' selected' : ''}>${escapeHtml(l)}</option>`
-    ).join('');
-    return `
-        <div class="evt-form-section">Basics</div>
-        <div class="evt-form-row">
-            <div class="evt-form-field full">
-                <label>Name</label>
-                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="e.g. Host Family Residence">
-            </div>
-        </div>
-        <div class="evt-form-row">
-            <div class="evt-form-field">
-                <label>Kind</label>
-                <select data-field="kind">${kindOpts}</select>
-            </div>
-            ${statusFieldHtml(ev.status)}
-        </div>
-
-        <div class="evt-form-section">Time</div>
-        <div class="evt-form-row">
-            <div class="evt-form-field">
-                <label>Check-in</label>
-                <input type="time" data-field="checkIn" value="${escapeHtml(ev.checkIn || '')}">
-            </div>
-            <div class="evt-form-field">
-                <label>Check-out</label>
-                <input type="time" data-field="checkOut" value="${escapeHtml(ev.checkOut || '')}">
-            </div>
-        </div>
-
-        <div class="evt-form-section">Location</div>
-        <div class="evt-form-row">
-            <div class="evt-form-field full">
-                <label>Address</label>
-                <input type="text" data-field="address" value="${escapeHtml(ev.address || '')}" placeholder="Street, city, region">
-            </div>
-        </div>
-        ${coordFieldHtml('coord', ev.coord)}
-
-        <div class="evt-form-section">Other</div>
-        <div class="evt-form-row">
-            ${costFieldHtml(ev.cost)}
-        </div>
-        ${notesFieldHtml(ev.notes)}
-    `;
-}
-
-function formFree(ev) {
-    return `
-        <div class="evt-form-section">Time</div>
-        <div class="evt-form-row">
-            <div class="evt-form-field">
-                <label>Start</label>
-                <input type="time" data-field="startTime" value="${escapeHtml(ev.startTime || '')}">
-            </div>
-            <div class="evt-form-field">
-                <label>End</label>
-                <input type="time" data-field="endTime" value="${escapeHtml(ev.endTime || '')}">
-            </div>
-            ${statusFieldHtml(ev.status)}
-        </div>
-        ${notesFieldHtml(ev.notes)}
-    `;
-}
-
-function formEvent(ev) {
-    return `
-        <div class="evt-form-section">Basics</div>
-        <div class="evt-form-row">
-            <div class="evt-form-field full">
-                <label>Name</label>
-                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="Event name">
-            </div>
-        </div>
-        <div class="evt-form-row">
-            <div class="evt-form-field">
-                <label>Start</label>
-                <input type="time" data-field="startTime" value="${escapeHtml(ev.startTime || '')}">
-            </div>
-            <div class="evt-form-field">
-                <label>End</label>
-                <input type="time" data-field="endTime" value="${escapeHtml(ev.endTime || '')}">
-            </div>
-            ${statusFieldHtml(ev.status)}
         </div>
         <div class="evt-form-row">
             ${costFieldHtml(ev.cost)}
@@ -5767,8 +5979,9 @@ function cleanDraft(draft) {
             }
         }
     }
-    // place / lodging の coord
-    if (d.type === 'place' || d.type === 'lodging') {
+    // event / (旧 place / lodging) の coord クリーンアップ
+    // v8.0.4: event 統合後の主体は event. place/lodging は防御 fallback.
+    if (d.type === 'event' || d.type === 'place' || d.type === 'lodging') {
         if (Array.isArray(d.coord)) {
             const [a, b] = d.coord;
             if (typeof a !== 'number' || typeof b !== 'number'
@@ -5778,11 +5991,9 @@ function cleanDraft(draft) {
         }
     }
     // v8.0.2: cost のクリーンアップ (旧 fare / admission を統合).
-    //   free type は cost を持たない. 持っていたら削除.
-    //   それ以外の type は amount が空 / 非数値なら cost 自体を削除. 0 は有効値.
-    if (d.type === 'free') {
-        if ('cost' in d) delete d.cost;
-    } else if (d.cost) {
+    // v8.0.4: free type 廃止に伴い、type==='free' の cost 削除分岐も廃止.
+    //   全 type で amount が空 / 非数値なら cost 自体を削除. 0 は有効値.
+    if (d.cost) {
         const amt = d.cost.amount;
         if (amt === '' || amt == null) {
             delete d.cost;
@@ -5810,6 +6021,308 @@ function openTypeSelModal(dayIdx) {
 function closeTypeSelModal() {
     $('#evt-typesel-modal').classList.remove('active');
     __evtTypeSelDayIdx = null;
+}
+
+// ──────────────── v8.0.4: Lodgings 管理 ────────────────
+// trip.meta.lodgings = [{ id, name, kind, address, coord, dateFrom, dateTo, cost, notes }, ...]
+//
+// 設計判断 (HANDOVER §5.4):
+//   - 宿泊先は「日々の予定」ではなく「期間を持つ拠点情報」
+//   - events に毎日入れる旧モデルは廃止 (冗長すぎる).
+//   - transport の to/from name には宿泊先名を文字列で書ける (datalist で補助).
+//   - dateFrom/dateTo は YYYY-MM-DD. 同じ日でも構わない (1泊扱い).
+//
+// CRUD はインライン関数群で実装. モーダル制御は専用 ID で.
+
+// 編集中の draft (lodging-edit-modal)
+let __lodgingDraft = null;
+let __lodgingEditingId = null;  // null = create モード, 既存 id = edit モード
+let __lodgingDraftPristine = null;
+
+function getLodgings() {
+    if (!state.trip || !state.trip.meta) return [];
+    if (!Array.isArray(state.trip.meta.lodgings)) state.trip.meta.lodgings = [];
+    return state.trip.meta.lodgings;
+}
+
+function genLodgingId() {
+    return 'lodg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// ── 一覧モーダル ──
+function openLodgingListModal() {
+    renderLodgingList();
+    $('#lodging-list-modal').classList.add('active');
+}
+function closeLodgingListModal() {
+    $('#lodging-list-modal').classList.remove('active');
+}
+function renderLodgingList() {
+    const list = getLodgings();
+    const body = $('#lodging-list-body');
+    if (!list.length) {
+        body.innerHTML = '<div class="lodging-list-empty">No lodgings yet — tap ADD LODGING to register one.</div>';
+        return;
+    }
+    body.innerHTML = list.map(l => {
+        const kindDef = CATEGORY_DEF[l.kind] || CATEGORY_DEF.hotel;
+        const icon = kindDef.icon || '🛏';
+        const range = (l.dateFrom && l.dateTo)
+            ? (l.dateFrom === l.dateTo ? l.dateFrom : `${l.dateFrom} → ${l.dateTo}`)
+            : (l.dateFrom || l.dateTo || '— dates not set —');
+        return `
+            <div class="lodging-row" data-id="${escapeHtml(l.id)}">
+                <div class="lodging-icon">${icon}</div>
+                <div class="lodging-body">
+                    <div class="lodging-name">${escapeHtml(l.name || '(untitled)')}</div>
+                    <div class="lodging-meta">${escapeHtml(range)}${l.address ? ' · ' + escapeHtml(l.address) : ''}</div>
+                </div>
+                <div class="lodging-arrow">▸</div>
+            </div>
+        `;
+    }).join('');
+    // 各行に click ハンドラを設置
+    body.querySelectorAll('.lodging-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const id = row.dataset.id;
+            openLodgingEditModal(id);
+        });
+    });
+}
+
+// ── 編集モーダル ──
+function openLodgingEditModal(idOrNull) {
+    const list = getLodgings();
+    if (idOrNull) {
+        const found = list.find(l => l.id === idOrNull);
+        if (!found) return;
+        __lodgingEditingId = idOrNull;
+        __lodgingDraft = deepClone(found);
+    } else {
+        __lodgingEditingId = null;
+        // create モード: 空の draft
+        // dateFrom/dateTo は trip の期間で初期化
+        const dFrom = state.trip?.meta?.startDate || '';
+        const dTo   = state.trip?.meta?.endDate   || '';
+        __lodgingDraft = {
+            id: genLodgingId(),
+            name: '',
+            kind: 'hotel',
+            address: '',
+            coord: null,
+            dateFrom: dFrom,
+            dateTo: dTo,
+            cost: { amount: '', currency: 'JPY' },
+            notes: ''
+        };
+    }
+    __lodgingDraftPristine = JSON.stringify(__lodgingDraft);
+    $('#lodging-edit-title').textContent = idOrNull ? 'EDIT LODGING' : 'NEW LODGING';
+    // delete ボタンは edit モード時のみ
+    $('#lodging-edit-delete').style.display = idOrNull ? '' : 'none';
+    renderLodgingEditForm();
+    $('#lodging-edit-modal').classList.add('active');
+}
+
+async function closeLodgingEditModal(opts = {}) {
+    if (!opts.force) {
+        const current = JSON.stringify(__lodgingDraft);
+        if (current !== __lodgingDraftPristine) {
+            const ok = await ckConfirm('Discard unsaved changes?', { okText: 'DISCARD' });
+            if (!ok) return false;
+        }
+    }
+    $('#lodging-edit-modal').classList.remove('active');
+    __lodgingDraft = null;
+    __lodgingDraftPristine = null;
+    __lodgingEditingId = null;
+    return true;
+}
+
+function renderLodgingEditForm() {
+    const l = __lodgingDraft;
+    if (!l) return;
+    const kindOpts = EVT_LODGING_KINDS.map(([v, lab]) =>
+        `<option value="${v}"${v === l.kind ? ' selected' : ''}>${escapeHtml(lab)}</option>`
+    ).join('');
+    const currOpts = EVT_CURRENCIES.map(c =>
+        `<option value="${c}"${c === (l.cost?.currency || 'JPY') ? ' selected' : ''}>${c}</option>`
+    ).join('');
+    const amt = (l.cost && l.cost.amount != null) ? l.cost.amount : '';
+    const lat = (Array.isArray(l.coord) && l.coord[0] != null) ? l.coord[0] : '';
+    const lon = (Array.isArray(l.coord) && l.coord[1] != null) ? l.coord[1] : '';
+    $('#lodging-edit-body').innerHTML = `
+        <div class="evt-form-section">Basics</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Name</label>
+                <input type="text" data-lf="name" value="${escapeHtml(l.name || '')}" placeholder="e.g. Host Family Residence">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Kind</label>
+                <select data-lf="kind">${kindOpts}</select>
+            </div>
+        </div>
+
+        <div class="evt-form-section">Stay period</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>From</label>
+                <input type="date" data-lf="dateFrom" value="${escapeHtml(l.dateFrom || '')}">
+            </div>
+            <div class="evt-form-field">
+                <label>To</label>
+                <input type="date" data-lf="dateTo" value="${escapeHtml(l.dateTo || '')}">
+            </div>
+        </div>
+
+        <div class="evt-form-section">Location</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Address</label>
+                <input type="text" data-lf="address" value="${escapeHtml(l.address || '')}" placeholder="Street, city, region">
+            </div>
+        </div>
+        <div class="evt-form-field full">
+            <label>Coord (lat, lon)</label>
+            <div class="evt-form-coord">
+                <input type="number" step="any" data-lf="coord.0" value="${lat}" placeholder="lat e.g. 49.0846">
+                <input type="number" step="any" data-lf="coord.1" value="${lon}" placeholder="lon e.g. -122.6017">
+            </div>
+        </div>
+
+        <div class="evt-form-section">Other</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Cost (total)</label>
+                <div class="evt-form-fare">
+                    <input type="number" step="any" data-lf="cost.amount" value="${amt}" placeholder="0 = FREE">
+                    <select data-lf="cost.currency">${currOpts}</select>
+                </div>
+            </div>
+        </div>
+        <div class="evt-form-field full">
+            <label>Notes</label>
+            <textarea data-lf="notes" rows="3" placeholder="Free-form notes...">${escapeHtml(l.notes || '')}</textarea>
+        </div>
+    `;
+    // ハンドラ設置
+    $('#lodging-edit-body').querySelectorAll('[data-lf]').forEach(el => {
+        el.addEventListener('input', () => {
+            setLodgingField(el.dataset.lf, el.value, el);
+        });
+        el.addEventListener('change', () => {
+            setLodgingField(el.dataset.lf, el.value, el);
+        });
+    });
+}
+
+function setLodgingField(path, value, el) {
+    if (!__lodgingDraft) return;
+    const parts = path.split('.');
+    let obj = __lodgingDraft;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        // 'coord' のような中間オブジェクト: 必要なら初期化
+        if (obj[p] == null) {
+            // 次のキーが数字なら配列、それ以外はオブジェクト
+            const nextKey = parts[i + 1];
+            obj[p] = /^\d+$/.test(nextKey) ? [] : {};
+        }
+        obj = obj[p];
+    }
+    const last = parts[parts.length - 1];
+    let v = value;
+    const isNumberInput = el && el.type === 'number';
+    const isCoordIndex = /^\d+$/.test(last);
+    if (isNumberInput || isCoordIndex) {
+        if (v === '' || v == null) {
+            v = null;
+        } else {
+            const n = Number(v);
+            v = Number.isFinite(n) ? n : null;
+        }
+    }
+    if (isCoordIndex) {
+        obj[Number(last)] = v;
+    } else {
+        obj[last] = v;
+    }
+}
+
+function cleanLodgingDraft(draft) {
+    const d = deepClone(draft);
+    // 文字列 trim
+    for (const k of Object.keys(d)) {
+        if (typeof d[k] === 'string') d[k] = d[k].trim();
+    }
+    // coord クリーンアップ
+    if (Array.isArray(d.coord)) {
+        const [a, b] = d.coord;
+        if (typeof a !== 'number' || typeof b !== 'number'
+            || !Number.isFinite(a) || !Number.isFinite(b)) {
+            delete d.coord;
+        }
+    } else {
+        delete d.coord;
+    }
+    // cost クリーンアップ
+    if (d.cost) {
+        const amt = d.cost.amount;
+        if (amt === '' || amt == null) {
+            delete d.cost;
+        } else {
+            const n = Number(amt);
+            if (!Number.isFinite(n)) {
+                delete d.cost;
+            } else {
+                d.cost.amount = n;
+            }
+        }
+    }
+    return d;
+}
+
+function saveLodgingEditModal() {
+    if (!__lodgingDraft) return;
+    const cleaned = cleanLodgingDraft(__lodgingDraft);
+    // name は必須に近いが、空でも保存は許可 (placeholder 的な役割).
+    const list = getLodgings();
+    if (__lodgingEditingId) {
+        const idx = list.findIndex(l => l.id === __lodgingEditingId);
+        if (idx >= 0) {
+            list[idx] = cleaned;
+        } else {
+            // 万一見つからない場合は追加扱い
+            list.push(cleaned);
+        }
+        showToast('LODGING SAVED');
+    } else {
+        list.push(cleaned);
+        showToast('LODGING ADDED');
+    }
+    persistTrip();
+    closeLodgingEditModal({ force: true });
+    renderLodgingList();
+}
+
+async function deleteLodgingClicked() {
+    if (!__lodgingEditingId) return;
+    const list = getLodgings();
+    const l = list.find(x => x.id === __lodgingEditingId);
+    const name = l?.name || 'this lodging';
+    const ok = await ckConfirm(`Delete "${name}"? This cannot be undone.`, {
+        danger: true, okText: 'DELETE'
+    });
+    if (!ok) return;
+    const idx = list.findIndex(x => x.id === __lodgingEditingId);
+    if (idx >= 0) list.splice(idx, 1);
+    persistTrip();
+    closeLodgingEditModal({ force: true });
+    renderLodgingList();
+    showToast('LODGING DELETED');
 }
 
 // ──────────────── 初期化 (DOMContentLoaded 内で呼ぶ) ────────────────
@@ -5855,6 +6368,20 @@ function setupEventEditHandlers() {
             if (dayIdx != null) openCreateModal(dayIdx, t);
         });
     });
+
+    // v8.0.4: Lodgings 管理モーダル
+    $('#lodging-list-close').addEventListener('click', closeLodgingListModal);
+    $('#lodging-list-modal').addEventListener('click', (e) => {
+        if (e.target === $('#lodging-list-modal')) closeLodgingListModal();
+    });
+    $('#lodging-list-add').addEventListener('click', () => openLodgingEditModal(null));
+
+    $('#lodging-edit-cancel').addEventListener('click', () => closeLodgingEditModal());
+    $('#lodging-edit-save').addEventListener('click', saveLodgingEditModal);
+    $('#lodging-edit-delete').addEventListener('click', deleteLodgingClicked);
+    $('#lodging-edit-modal').addEventListener('click', (e) => {
+        if (e.target === $('#lodging-edit-modal')) closeLodgingEditModal();
+    });
 }
 
 function closeModal() {
@@ -5875,6 +6402,11 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#btn-sample').addEventListener('click', reloadSample);
     $('#btn-purge').addEventListener('click', purgeAll);
     $('#btn-close').addEventListener('click', closeModal);
+    // v8.0.4: 宿泊先管理
+    $('#btn-lodgings').addEventListener('click', () => {
+        // OPS パネルは閉じずに残す (戻り先として自然)
+        openLodgingListModal();
+    });
 
     // v8.0.1: イベント編集モーダル系のハンドラ設置
     setupEventEditHandlers();
@@ -5943,6 +6475,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // 3. v8.0.1: 編集モーダル → 詳細モーダル → typesel モーダル.
             //    編集モーダルは「変更未保存の確認」が走る可能性があるため
             //    closeEditModal() 経由で閉じる (内部で ckConfirm が出るかも).
+            // v8.0.4: lodging 編集モーダルも同じ流儀で先に処理. 編集系を上位に.
+            if ($('#lodging-edit-modal').classList.contains('active')) {
+                closeLodgingEditModal();
+                return;
+            }
             if ($('#evt-edit-modal').classList.contains('active')) {
                 closeEditModal();
                 return;
@@ -5953,6 +6490,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if ($('#evt-typesel-modal').classList.contains('active')) {
                 closeTypeSelModal();
+                return;
+            }
+            if ($('#lodging-list-modal').classList.contains('active')) {
+                closeLodgingListModal();
                 return;
             }
             closeModal();
@@ -5967,6 +6508,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('#evt-edit-modal').classList.contains('active')) return;
         if ($('#evt-detail-modal').classList.contains('active')) return;
         if ($('#evt-typesel-modal').classList.contains('active')) return;
+        // v8.0.4: lodging モーダル群もガード対象に
+        if ($('#lodging-list-modal').classList.contains('active')) return;
+        if ($('#lodging-edit-modal').classList.contains('active')) return;
         // stageの内側のクリックは無視。stageの外(背景)クリックでクローズ
         if (!stage.contains(e.target)) closeModal();
     });
@@ -6033,6 +6577,12 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="ops-action">
             <button id="btn-export">💾 Export</button>
             <div class="ops-desc">Save current itinerary as .trip.json file.</div>
+        </div>
+
+        <div class="ops-sector">Trip Setup</div>
+        <div class="ops-action">
+            <button id="btn-lodgings">🏠 Manage Lodgings</button>
+            <div class="ops-desc">Add or edit accommodations for this trip. Stays are stored as date ranges, not daily events.</div>
         </div>
 
         <div class="ops-sector">Initialize</div>
@@ -6103,6 +6653,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (evtEdit    && evtEdit.classList.contains('active'))    return;
             if (evtDetail  && evtDetail.classList.contains('active'))  return;
             if (evtTypeSel && evtTypeSel.classList.contains('active')) return;
+            // v8.0.4: lodging モーダルもガード対象
+            const lodgList = document.getElementById('lodging-list-modal');
+            const lodgEdit = document.getElementById('lodging-edit-modal');
+            if (lodgList && lodgList.classList.contains('active')) return;
+            if (lodgEdit && lodgEdit.classList.contains('active')) return;
             close();
         }
     });
@@ -6111,8 +6666,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // (操作の結果は背景の行程表に反映されるため、パネルを残す意味は薄い)。
     // ただし PURGE は ckConfirm のキャンセル可能性があるため、close は
     // 各ハンドラ側で行うのではなく、ボタンクリック後に汎用で close する。
+    // v8.0.4: Manage Lodgings は別モーダルを開く操作なので、自動 close を抑制.
+    //   (lodging モーダルを閉じた時に OPS に戻れる方が自然)
     panel.querySelectorAll('.ops-action button').forEach(btn => {
         btn.addEventListener('click', () => {
+            if (btn.id === 'btn-lodgings') return;  // v8.0.4: 例外
             // confirm モーダルが出るタイプは少し遅らせて閉じる
             setTimeout(close, 50);
         });
