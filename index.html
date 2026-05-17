@@ -1755,6 +1755,10 @@ body.has-fullscreen-map {
     position: relative;
     overflow: hidden;
     transition: all 0.3s ease;
+    /* v8.0.5: カード全体をタップ可能にするため. JS 側で click を button に委譲する.
+       (内部の <button> 自体は元々クリック可能だが、説明文の領域は反応しないので
+        Fitts の法則上タップしづらい. カード全体を反応領域にして UX を改善する.) */
+    cursor: pointer;
 }
 .ops-action::before {
     content: '';
@@ -2360,7 +2364,7 @@ body.has-fullscreen-map {
     transform: translateY(-1px);
 }
 
-/* ──── v8.0.4: Lodgings 一覧モーダル ──── */
+/* ──── v8.0.4: Lodgings 一覧モーダル / v8.0.5: Landmarks 一覧モーダル共通 ──── */
 .lodging-list-empty {
     padding: 22px 16px;
     text-align: center;
@@ -2372,34 +2376,46 @@ body.has-fullscreen-map {
     border: 1px dashed rgba(226, 232, 240, 0.15);
     border-radius: 6px;
 }
-.lodging-row {
+/* v8.0.5: 旧装飾 (border-left: 3px solid var(--cat-lodging)) を廃止.
+   理由: 「装飾は機能のためにのみ存在」(HANDOVER §8 北極星) という原則に従い、
+         意味のない色帯を削除. timeline カード (.tl-card) と同じデザイン言語に揃え、
+         シンプルな全周ボーダー + ホバー時の translateX(2px) で統一感を出す.
+   .lodging-row と .landmark-row は同じスタイル. クラスを共有しても良いが、
+   将来の差別化余地のため別クラスのまま (両方に同じスタイルを適用). */
+.lodging-row,
+.landmark-row {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 12px 14px;
     background: var(--card-glass);
     border: 1px solid var(--card-border);
-    border-left: 3px solid var(--cat-lodging);
-    border-radius: 6px;
+    border-radius: 8px;
     margin-bottom: 8px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s;
+    backdrop-filter: blur(6px);
 }
-.lodging-row:hover {
-    border-color: var(--accent-cyan);
-    border-left-color: var(--accent-cyan);
+.lodging-row:hover,
+.landmark-row:hover {
     background: var(--card-glass-hover);
+    border-color: var(--card-border-hover);
+    transform: translateX(2px);
 }
-.lodging-row .lodging-icon {
+.lodging-row .lodging-icon,
+.landmark-row .lodging-icon {
     font-size: 20px;
     line-height: 1;
     flex-shrink: 0;
+    opacity: 0.85;
 }
-.lodging-row .lodging-body {
+.lodging-row .lodging-body,
+.landmark-row .lodging-body {
     flex: 1;
     min-width: 0;
 }
-.lodging-row .lodging-name {
+.lodging-row .lodging-name,
+.landmark-row .lodging-name {
     font-family: var(--text-mono);
     font-size: 13px;
     color: rgba(226, 232, 240, 0.95);
@@ -2408,18 +2424,22 @@ body.has-fullscreen-map {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.lodging-row .lodging-meta {
+.lodging-row .lodging-meta,
+.landmark-row .lodging-meta {
     font-family: var(--text-mono);
     font-size: 10px;
     color: rgba(226, 232, 240, 0.55);
     letter-spacing: 0.1em;
 }
-.lodging-row .lodging-arrow {
+.lodging-row .lodging-arrow,
+.landmark-row .lodging-arrow {
     color: rgba(226, 232, 240, 0.3);
     font-size: 14px;
     flex-shrink: 0;
+    transition: color 0.2s;
 }
-.lodging-row:hover .lodging-arrow {
+.lodging-row:hover .lodging-arrow,
+.landmark-row:hover .lodging-arrow {
     color: var(--accent-cyan);
 }
 
@@ -7125,6 +7145,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btn.id === 'btn-landmarks') return; // v8.0.5: 例外
             // confirm モーダルが出るタイプは少し遅らせて閉じる
             setTimeout(close, 50);
+        });
+    });
+
+    // v8.0.5: ops-action カード全体をタップ可能にする.
+    //   カード見た目はタップ可能なのに、実際は内部 <button> のテキスト部分しか
+    //   反応していなかった (UX 違反). カード全体の click を内部 button に委譲.
+    //   - 既存の btn-* ハンドラ (importTrip/openLodgingListModal 等) も
+    //     自動 close ロジックも、すべて button.click を起点にしているので、
+    //     button.click() を呼ぶだけで全て自然に動作する.
+    //   - 内部 button を直接タップした場合の二重発火を防ぐため、ターゲットが
+    //     button そのものなら委譲をスキップ.
+    panel.querySelectorAll('.ops-action').forEach(card => {
+        card.addEventListener('click', (e) => {
+            // 内部の button タップは元の click が自然に走る. ここでは何もしない.
+            if (e.target.closest('button')) return;
+            const btn = card.querySelector('button');
+            if (btn) btn.click();
         });
     });
 })();
