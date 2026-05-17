@@ -5214,43 +5214,53 @@ const EVT_STATUSES = [
 
 // v8.0.5: タイムゾーン選択肢 (IANA TZ ID).
 //   weather.js の ALLOWED_CITIES (30 都市) と整合させ、各都市の主要 TZ を網羅.
-//   ラベルは IANA ID + 通称 (JST 等) + UTC オフセットを併記.
+//   ラベルは都市名 + 通称 (JST 等) + UTC オフセットを併記.
 //     DST のある TZ は両方を併記 (例: "PST/PDT, UTC-8/-7").
 //     UTC オフセットは IANA データが更新されると実際とズレる可能性があるが、
 //     週/月単位で変わるものではなく、表示用の補助情報として手書き定数で持つ.
-//   並び順: UTC オフセットの東 (大) から西 (小) へ. ユーザーの空間直感に合わせる.
-//   旧データのフリーテキスト (例: 'JST', 'Asia/Tokyo' 以外) は formTransport 内で
+//   並び順: 都市名 ABC 順. UTC のみ末尾固定 (都市ではないため).
+//     v8.0.5 初版は UTC オフセット順だったが、weather.js の ALLOWED_CITIES が
+//     ABC 順であることとの一貫性、および検索性 ("Tokyo は T のあたり") を優先.
+//   複数都市が同じ IANA TZ を共有する場合は、各都市の位置に別エントリで出す.
+//     例: Delhi と Mumbai はどちらも value="Asia/Kolkata", 表示位置は D と M.
+//     これにより "Mumbai" 検索で M の位置に見つかる. データとしての value は同じ.
+//   旧データのフリーテキスト (例: 'JST') は formTransport 内で
 //   "(custom: ...)" の臨時オプションとして表示し、既存値を壊さない.
 const EVT_TIMEZONES = [
-    ['Pacific/Auckland',                'Auckland / Wellington (NZST/NZDT, UTC+12/+13)'],
-    ['Australia/Sydney',                'Sydney (AEST/AEDT, UTC+10/+11)'],
-    ['Asia/Tokyo',                      'Tokyo (JST, UTC+9)'],
-    ['Asia/Seoul',                      'Seoul (KST, UTC+9)'],
-    ['Asia/Shanghai',                   'Beijing / Shanghai (CST, UTC+8)'],
-    ['Asia/Hong_Kong',                  'Hong Kong (HKT, UTC+8)'],
-    ['Asia/Taipei',                     'Taipei (CST, UTC+8)'],
-    ['Asia/Singapore',                  'Singapore (SGT, UTC+8)'],
-    ['Asia/Manila',                     'Manila (PHT, UTC+8)'],
-    ['Asia/Bangkok',                    'Bangkok (ICT, UTC+7)'],
-    ['Asia/Kolkata',                    'Delhi / Mumbai (IST, UTC+5:30)'],
-    ['Asia/Dubai',                      'Dubai (GST, UTC+4)'],
-    ['Africa/Nairobi',                  'Nairobi (EAT, UTC+3)'],
-    ['Europe/Istanbul',                 'Istanbul (TRT, UTC+3)'],
-    ['Africa/Cairo',                    'Cairo (EET/EEST, UTC+2/+3)'],
-    ['Africa/Johannesburg',             'Cape Town / Johannesburg (SAST, UTC+2)'],
-    ['Europe/Berlin',                   'Berlin (CET/CEST, UTC+1/+2)'],
-    ['Europe/Paris',                    'Paris (CET/CEST, UTC+1/+2)'],
-    ['Europe/Rome',                     'Rome (CET/CEST, UTC+1/+2)'],
-    ['Europe/Madrid',                   'Madrid (CET/CEST, UTC+1/+2)'],
     ['Europe/Amsterdam',                'Amsterdam (CET/CEST, UTC+1/+2)'],
-    ['Europe/London',                   'London (GMT/BST, UTC+0/+1)'],
-    ['Atlantic/Reykjavik',              'Reykjavik (GMT, UTC+0)'],
-    ['America/Sao_Paulo',               'Rio de Janeiro / São Paulo (BRT, UTC-3)'],
+    ['Pacific/Auckland',                'Auckland (NZST/NZDT, UTC+12/+13)'],
+    ['Asia/Bangkok',                    'Bangkok (ICT, UTC+7)'],
+    ['Asia/Shanghai',                   'Beijing (CST, UTC+8)'],
+    ['Europe/Berlin',                   'Berlin (CET/CEST, UTC+1/+2)'],
     ['America/Argentina/Buenos_Aires',  'Buenos Aires (ART, UTC-3)'],
-    ['America/New_York',                'New York (EST/EDT, UTC-5/-4)'],
-    ['America/Vancouver',               'Vancouver (PST/PDT, UTC-8/-7)'],
-    ['America/Los_Angeles',             'Los Angeles (PST/PDT, UTC-8/-7)'],
+    ['Africa/Cairo',                    'Cairo (EET/EEST, UTC+2/+3)'],
+    ['Africa/Johannesburg',             'Cape Town (SAST, UTC+2)'],
+    ['Asia/Kolkata',                    'Delhi (IST, UTC+5:30)'],
+    ['Asia/Dubai',                      'Dubai (GST, UTC+4)'],
+    ['Asia/Hong_Kong',                  'Hong Kong (HKT, UTC+8)'],
     ['Pacific/Honolulu',                'Honolulu (HST, UTC-10)'],
+    ['Europe/Istanbul',                 'Istanbul (TRT, UTC+3)'],
+    ['Africa/Johannesburg',             'Johannesburg (SAST, UTC+2)'],
+    ['Europe/London',                   'London (GMT/BST, UTC+0/+1)'],
+    ['America/Los_Angeles',             'Los Angeles (PST/PDT, UTC-8/-7)'],
+    ['Europe/Madrid',                   'Madrid (CET/CEST, UTC+1/+2)'],
+    ['Asia/Manila',                     'Manila (PHT, UTC+8)'],
+    ['Asia/Kolkata',                    'Mumbai (IST, UTC+5:30)'],
+    ['Africa/Nairobi',                  'Nairobi (EAT, UTC+3)'],
+    ['America/New_York',                'New York (EST/EDT, UTC-5/-4)'],
+    ['Europe/Paris',                    'Paris (CET/CEST, UTC+1/+2)'],
+    ['Atlantic/Reykjavik',              'Reykjavik (GMT, UTC+0)'],
+    ['America/Sao_Paulo',               'Rio de Janeiro (BRT, UTC-3)'],
+    ['Europe/Rome',                     'Rome (CET/CEST, UTC+1/+2)'],
+    ['America/Sao_Paulo',               'São Paulo (BRT, UTC-3)'],
+    ['Asia/Seoul',                      'Seoul (KST, UTC+9)'],
+    ['Asia/Shanghai',                   'Shanghai (CST, UTC+8)'],
+    ['Asia/Singapore',                  'Singapore (SGT, UTC+8)'],
+    ['Australia/Sydney',                'Sydney (AEST/AEDT, UTC+10/+11)'],
+    ['Asia/Taipei',                     'Taipei (CST, UTC+8)'],
+    ['Asia/Tokyo',                      'Tokyo (JST, UTC+9)'],
+    ['America/Vancouver',               'Vancouver (PST/PDT, UTC-8/-7)'],
+    ['Pacific/Auckland',                'Wellington (NZST/NZDT, UTC+12/+13)'],
     ['UTC',                             'UTC (UTC+0)']
 ];
 
@@ -5258,6 +5268,9 @@ const EVT_TIMEZONES = [
 //   currentValue が EVT_TIMEZONES に含まれない場合 (旧データのフリーテキスト等) は
 //   先頭に "(custom: ...)" の一時オプションを追加して既存値を壊さない.
 //   空オプション "— Not set" は常に先頭. data-field 属性は呼び出し側で指定.
+//   ABC 順で同じ value (例 Asia/Kolkata) が複数エントリ (Delhi / Mumbai) に
+//   現れる場合、最初の出現のみ selected にする (HTML 仕様では最後の selected が
+//   採用されるが、データ作成時の意図 = アルファベット上先に見える方を尊重).
 function renderTimezoneSelect(currentValue, dataField, opts = {}) {
     const cur = (typeof currentValue === 'string') ? currentValue.trim() : '';
     const known = EVT_TIMEZONES.some(([id]) => id === cur);
@@ -5270,9 +5283,14 @@ function renderTimezoneSelect(currentValue, dataField, opts = {}) {
     if (isCustom) {
         optsHtml.push(`<option value="${escapeHtml(cur)}" selected>(custom: ${escapeHtml(cur)})</option>`);
     }
-    // ホワイトリスト
+    // ホワイトリスト. 同 value 重複時は最初の出現のみ selected.
+    let selectedAssigned = false;
     for (const [id, label] of EVT_TIMEZONES) {
-        const sel = (id === cur) ? ' selected' : '';
+        let sel = '';
+        if (id === cur && !selectedAssigned) {
+            sel = ' selected';
+            selectedAssigned = true;
+        }
         optsHtml.push(`<option value="${escapeHtml(id)}"${sel}>${escapeHtml(label)}</option>`);
     }
     return `<select data-field="${escapeHtml(dataField)}">${optsHtml.join('')}</select>`;
