@@ -1701,12 +1701,14 @@ body.has-fullscreen-map {
     font-weight: 500;
 }
 .ops-panel-header .ops-close {
+    /* v8.0.4: cancel/close 系は中立色 (白系) に統一 (v8.0.3 の原則を反映).
+       シアンは Save / OK / primary action 専用. ホバー時のみシアンに転じる. */
     position: absolute;
     top: 14px;
     right: 16px;
-    background: rgba(0, 242, 254, 0.04);
-    border: 1px solid rgba(0, 242, 254, 0.2);
-    color: rgba(0, 242, 254, 0.7);
+    background: transparent;
+    border: 1px solid rgba(226, 232, 240, 0.3);
+    color: rgba(226, 232, 240, 0.8);
     font-family: var(--text-mono);
     font-size: 0.65rem;
     letter-spacing: 0.25em;
@@ -1714,13 +1716,13 @@ body.has-fullscreen-map {
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.3s ease;
-    opacity: 0.55;
+    opacity: 0.85;
 }
 .ops-panel-header .ops-close:hover {
     opacity: 1;
     color: var(--accent-cyan);
     border-color: var(--accent-cyan);
-    background: rgba(0, 242, 254, 0.1);
+    background: rgba(0, 242, 254, 0.08);
     box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
 }
 
