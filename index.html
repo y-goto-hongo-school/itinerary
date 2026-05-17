@@ -2828,6 +2828,43 @@ body.has-fullscreen-map {
     </div>
 </div>
 
+<!-- v8.0.5: Landmarks (場所登録) 一覧モーダル. OPS パネルから開く.
+     trip.meta.landmarks の CRUD を提供. lodging-list-modal と同型.
+     設計判断: lodging との違いは「期間を持たない」点. transport datalist は
+              lodgings + landmarks のマージで提供する. -->
+<div class="evt-modal" id="landmark-list-modal" role="dialog" aria-modal="true" aria-labelledby="landmark-list-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="landmark-list-title">LANDMARKS</div>
+            <button class="evt-modal-close" id="landmark-list-close">CLOSE</button>
+        </div>
+        <div class="evt-modal-body" id="landmark-list-body">
+            <!-- 動的に生成される -->
+        </div>
+        <div class="evt-modal-footer">
+            <button class="primary" id="landmark-list-add">+ ADD LANDMARK</button>
+        </div>
+    </div>
+</div>
+
+<!-- v8.0.5: Landmark 編集モーダル. landmark-list-modal から開く.
+     name / address / coord / tz / notes を編集. -->
+<div class="evt-modal" id="landmark-edit-modal" role="dialog" aria-modal="true" aria-labelledby="landmark-edit-title">
+    <div class="evt-modal-box">
+        <div class="evt-modal-header">
+            <div class="evt-modal-title" id="landmark-edit-title">EDIT LANDMARK</div>
+        </div>
+        <div class="evt-modal-body" id="landmark-edit-body">
+            <!-- 動的に生成される -->
+        </div>
+        <div class="evt-modal-footer">
+            <button class="danger" id="landmark-edit-delete" style="margin-right:auto">DELETE</button>
+            <button id="landmark-edit-cancel">Cancel</button>
+            <button class="primary" id="landmark-edit-save">Save</button>
+        </div>
+    </div>
+</div>
+
 <script>
 // ============================================================
 // ITINERARY — STEP 1 v2
@@ -3135,15 +3172,19 @@ function normalizeTrip(raw) {
     if (fmt !== 'trip-v1' && fmt !== 'itn-v1') return null;
     // 浅いクローン経由で正規化 (元オブジェクトを汚さない)
     // v8.0.4: meta.lodgings を追加. 既存値があればそれを保持.
+    // v8.0.5: meta.landmarks を追加. 旅程内で再利用される場所のプリセット
+    //   (空港・駅・学校など). 期間を持たない点で lodgings と区別される.
     const meta = Object.assign({
         title: '', subtitle: '', operator: '',
         origin: '', originAirport: '',
         dest: '', destAirport: '',
         startDate: '', endDate: '',
         homeTimezone: '', destTimezone: '',
-        lodgings: []
+        lodgings: [],
+        landmarks: []
     }, raw.meta || {});
     if (!Array.isArray(meta.lodgings)) meta.lodgings = [];
+    if (!Array.isArray(meta.landmarks)) meta.landmarks = [];
     const days = raw.days.map(d => ({
         date: d.date || '',
         dayLabel: d.dayLabel || '',
@@ -5788,6 +5829,35 @@ function costFieldHtml(currentCost) {
     `;
 }
 
+// v8.0.5: lodgings + landmarks の名前を統合した datalist HTML を生成.
+//   重複名 (大文字小文字を区別せず) は最初の出現のみ採用.
+//   返り値: { datalistHtml, listAttr }
+//     - datalistHtml: <datalist id="..."> ... </datalist> 全体 (空ならから文字列)
+//     - listAttr: input に付与する ' list="..."' 文字列 (datalist が空ならから文字列)
+//   呼び出し側で <input ... ${listAttr}> として使う.
+function mergePlaceNamesHtml(datalistId) {
+    const lodgings = getLodgings();
+    const landmarks = getLandmarks();
+    const seen = new Set();
+    const names = [];
+    for (const src of [lodgings, landmarks]) {
+        for (const item of src) {
+            const nm = (item.name || '').trim();
+            if (!nm) continue;
+            const key = nm.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            names.push(nm);
+        }
+    }
+    if (!names.length) return { datalistHtml: '', listAttr: '' };
+    const opts = names.map(nm => `<option value="${escapeHtml(nm)}">`).join('');
+    return {
+        datalistHtml: `<datalist id="${escapeHtml(datalistId)}">${opts}</datalist>`,
+        listAttr: ` list="${escapeHtml(datalistId)}"`
+    };
+}
+
 function formTransport(ev) {
     const modeOpts = EVT_TRANSPORT_MODES.map(([v, l]) =>
         `<option value="${v}"${v === ev.mode ? ' selected' : ''}>${escapeHtml(l)}</option>`
@@ -5795,15 +5865,9 @@ function formTransport(ev) {
     // v8.0.4: 宿泊先名を datalist で from.name / to.name の候補として提示.
     //   ユーザー要望「transport で行先候補として宿泊先名が出せると楽」に対応.
     //   list 属性で <datalist> に紐付け. 自由入力は変わらず可能.
-    const lodgings = getLodgings();
-    const lodgingOpts = lodgings
-        .filter(l => l.name && l.name.trim())
-        .map(l => `<option value="${escapeHtml(l.name)}">`)
-        .join('');
-    const datalistHtml = lodgingOpts
-        ? `<datalist id="transport-place-list">${lodgingOpts}</datalist>`
-        : '';
-    const listAttr = lodgingOpts ? ' list="transport-place-list"' : '';
+    // v8.0.5: landmarks (場所登録) も候補に追加. lodgings + landmarks のマージ.
+    //   mergePlaceNamesHtml に切り出し済み. event 編集モーダルでも再利用される.
+    const { datalistHtml, listAttr } = mergePlaceNamesHtml('transport-place-list');
     return `
         ${datalistHtml}
         <div class="evt-form-section">Basics</div>
@@ -5887,12 +5951,17 @@ function formEvent(ev) {
     const catOpts = EVT_EVENT_CATEGORIES.map(([v, l]) =>
         `<option value="${v}"${v === (ev.category || 'other') ? ' selected' : ''}>${escapeHtml(l)}</option>`
     ).join('');
+    // v8.0.5: name 入力に lodgings + landmarks の datalist を付与.
+    //   transport と同じヘルパーで、ID だけ別 (formEvent と formTransport が
+    //   同時に開かれることはないが、コードの独立性のため別 ID にする).
+    const { datalistHtml, listAttr } = mergePlaceNamesHtml('event-place-list');
     return `
+        ${datalistHtml}
         <div class="evt-form-section">Basics</div>
         <div class="evt-form-row">
             <div class="evt-form-field full">
                 <label>Name</label>
-                <input type="text" data-field="name" value="${escapeHtml(ev.name || '')}" placeholder="e.g. Butchart Gardens, Free Time">
+                <input type="text" data-field="name"${listAttr} value="${escapeHtml(ev.name || '')}" placeholder="e.g. Butchart Gardens, Free Time">
             </div>
         </div>
         <div class="evt-form-row">
@@ -6411,6 +6480,261 @@ async function deleteLodgingClicked() {
     showToast('LODGING DELETED');
 }
 
+// ──────────────── v8.0.5: Landmarks 管理 ────────────────
+// trip.meta.landmarks = [{ id, name, address, coord, tz, notes }, ...]
+//
+// 設計判断 (HANDOVER §5.5-A → v8.0.5 で確定):
+//   - 場所登録: 旅程内で再利用される場所 (空港, 駅, 学校 etc.) のプリセット.
+//   - lodging との違い: 期間 (dateFrom/dateTo) を持たない. 何度訪れてもよい点.
+//   - category は今は導入しない (event の category と混同を避ける). 名前で表現.
+//   - transport の datalist は lodgings + landmarks のマージで提供 (Stage 4).
+//   - §5.3 (geocode) で coord/tz が自動入力される予定. tz は今のうちから持たせる.
+//   - lodgings UI のパターンを完全踏襲. ID プレフィクスのみ "lm_" で区別.
+//
+// CRUD はインライン関数群で実装. モーダル制御は専用 ID で.
+
+// 編集中の draft (landmark-edit-modal)
+let __landmarkDraft = null;
+let __landmarkEditingId = null;  // null = create モード, 既存 id = edit モード
+let __landmarkDraftPristine = null;
+
+function getLandmarks() {
+    if (!state.trip || !state.trip.meta) return [];
+    if (!Array.isArray(state.trip.meta.landmarks)) state.trip.meta.landmarks = [];
+    return state.trip.meta.landmarks;
+}
+
+function genLandmarkId() {
+    return 'lm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// ── 一覧モーダル ──
+function openLandmarkListModal() {
+    renderLandmarkList();
+    $('#landmark-list-modal').classList.add('active');
+}
+function closeLandmarkListModal() {
+    $('#landmark-list-modal').classList.remove('active');
+}
+function renderLandmarkList() {
+    const list = getLandmarks();
+    const body = $('#landmark-list-body');
+    if (!list.length) {
+        body.innerHTML = '<div class="lodging-list-empty">No landmarks yet — tap ADD LANDMARK to register one.</div>';
+        return;
+    }
+    body.innerHTML = list.map(lm => {
+        // 副情報: address があれば優先、なければ coord
+        const hasCoord = Array.isArray(lm.coord) && lm.coord.length === 2;
+        const meta = lm.address
+            ? lm.address
+            : (hasCoord ? `${lm.coord[0]}, ${lm.coord[1]}` : '— address not set —');
+        return `
+            <div class="lodging-row landmark-row" data-id="${escapeHtml(lm.id)}">
+                <div class="lodging-icon">📍</div>
+                <div class="lodging-body">
+                    <div class="lodging-name">${escapeHtml(lm.name || '(untitled)')}</div>
+                    <div class="lodging-meta">${escapeHtml(meta)}</div>
+                </div>
+                <div class="lodging-arrow">▸</div>
+            </div>
+        `;
+    }).join('');
+    // 各行に click ハンドラを設置
+    body.querySelectorAll('.landmark-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const id = row.dataset.id;
+            openLandmarkEditModal(id);
+        });
+    });
+}
+
+// ── 編集モーダル ──
+function openLandmarkEditModal(idOrNull) {
+    const list = getLandmarks();
+    if (idOrNull) {
+        const found = list.find(lm => lm.id === idOrNull);
+        if (!found) return;
+        __landmarkEditingId = idOrNull;
+        __landmarkDraft = deepClone(found);
+    } else {
+        __landmarkEditingId = null;
+        // create モード: 空の draft
+        __landmarkDraft = {
+            id: genLandmarkId(),
+            name: '',
+            address: '',
+            coord: null,
+            tz: '',
+            notes: ''
+        };
+    }
+    __landmarkDraftPristine = JSON.stringify(__landmarkDraft);
+    $('#landmark-edit-title').textContent = idOrNull ? 'EDIT LANDMARK' : 'NEW LANDMARK';
+    // delete ボタンは edit モード時のみ
+    $('#landmark-edit-delete').style.display = idOrNull ? '' : 'none';
+    renderLandmarkEditForm();
+    $('#landmark-edit-modal').classList.add('active');
+}
+
+async function closeLandmarkEditModal(opts = {}) {
+    if (!opts.force) {
+        const current = JSON.stringify(__landmarkDraft);
+        if (current !== __landmarkDraftPristine) {
+            const ok = await ckConfirm('Discard unsaved changes?', { okText: 'DISCARD' });
+            if (!ok) return false;
+        }
+    }
+    $('#landmark-edit-modal').classList.remove('active');
+    __landmarkDraft = null;
+    __landmarkDraftPristine = null;
+    __landmarkEditingId = null;
+    return true;
+}
+
+function renderLandmarkEditForm() {
+    const lm = __landmarkDraft;
+    if (!lm) return;
+    const lat = (Array.isArray(lm.coord) && lm.coord[0] != null) ? lm.coord[0] : '';
+    const lon = (Array.isArray(lm.coord) && lm.coord[1] != null) ? lm.coord[1] : '';
+    // v8.0.5: renderTimezoneSelect を再利用 (formTransport と同じ select).
+    //   data-lf に置換するため、生成された HTML を後処理で書き換える.
+    const tzSelectHtml = renderTimezoneSelect(lm.tz, 'tz')
+        .replace('data-field="tz"', 'data-lf="tz"');
+    $('#landmark-edit-body').innerHTML = `
+        <div class="evt-form-section">Basics</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Name</label>
+                <input type="text" data-lf="name" value="${escapeHtml(lm.name || '')}" placeholder="e.g. Vancouver Airport, UBC Campus">
+            </div>
+        </div>
+
+        <div class="evt-form-section">Location</div>
+        <div class="evt-form-row">
+            <div class="evt-form-field full">
+                <label>Address</label>
+                <input type="text" data-lf="address" value="${escapeHtml(lm.address || '')}" placeholder="Street, city, region">
+            </div>
+        </div>
+        <div class="evt-form-field full">
+            <label>Coord (lat, lon)</label>
+            <div class="evt-form-coord">
+                <input type="number" step="any" data-lf="coord.0" value="${lat}" placeholder="lat e.g. 49.1939">
+                <input type="number" step="any" data-lf="coord.1" value="${lon}" placeholder="lon e.g. -123.1844">
+            </div>
+        </div>
+        <div class="evt-form-row">
+            <div class="evt-form-field">
+                <label>Timezone (IANA)</label>
+                ${tzSelectHtml}
+            </div>
+        </div>
+
+        <div class="evt-form-section">Notes</div>
+        <div class="evt-form-field full">
+            <textarea data-lf="notes" rows="3" placeholder="Free-form notes (e.g. terminal number, entrance gate)...">${escapeHtml(lm.notes || '')}</textarea>
+        </div>
+    `;
+    // ハンドラ設置 (lodging と同じ setLandmarkField 経由)
+    $('#landmark-edit-body').querySelectorAll('[data-lf]').forEach(el => {
+        el.addEventListener('input', () => {
+            setLandmarkField(el.dataset.lf, el.value, el);
+        });
+        el.addEventListener('change', () => {
+            setLandmarkField(el.dataset.lf, el.value, el);
+        });
+    });
+}
+
+function setLandmarkField(path, value, el) {
+    if (!__landmarkDraft) return;
+    const parts = path.split('.');
+    let obj = __landmarkDraft;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        if (obj[p] == null) {
+            const nextKey = parts[i + 1];
+            obj[p] = /^\d+$/.test(nextKey) ? [] : {};
+        }
+        obj = obj[p];
+    }
+    const last = parts[parts.length - 1];
+    let v = value;
+    const isNumberInput = el && el.type === 'number';
+    const isCoordIndex = /^\d+$/.test(last);
+    if (isNumberInput || isCoordIndex) {
+        if (v === '' || v == null) {
+            v = null;
+        } else {
+            const n = Number(v);
+            v = Number.isFinite(n) ? n : null;
+        }
+    }
+    if (isCoordIndex) {
+        obj[Number(last)] = v;
+    } else {
+        obj[last] = v;
+    }
+}
+
+function cleanLandmarkDraft(draft) {
+    const d = deepClone(draft);
+    // 文字列 trim
+    for (const k of Object.keys(d)) {
+        if (typeof d[k] === 'string') d[k] = d[k].trim();
+    }
+    // coord クリーンアップ
+    if (Array.isArray(d.coord)) {
+        const [a, b] = d.coord;
+        if (typeof a !== 'number' || typeof b !== 'number'
+            || !Number.isFinite(a) || !Number.isFinite(b)) {
+            delete d.coord;
+        }
+    } else {
+        delete d.coord;
+    }
+    return d;
+}
+
+function saveLandmarkEditModal() {
+    if (!__landmarkDraft) return;
+    const cleaned = cleanLandmarkDraft(__landmarkDraft);
+    const list = getLandmarks();
+    if (__landmarkEditingId) {
+        const idx = list.findIndex(lm => lm.id === __landmarkEditingId);
+        if (idx >= 0) {
+            list[idx] = cleaned;
+        } else {
+            list.push(cleaned);
+        }
+        showToast('LANDMARK SAVED');
+    } else {
+        list.push(cleaned);
+        showToast('LANDMARK ADDED');
+    }
+    persistTrip();
+    closeLandmarkEditModal({ force: true });
+    renderLandmarkList();
+}
+
+async function deleteLandmarkClicked() {
+    if (!__landmarkEditingId) return;
+    const list = getLandmarks();
+    const lm = list.find(x => x.id === __landmarkEditingId);
+    const name = lm?.name || 'this landmark';
+    const ok = await ckConfirm(`Delete "${name}"? This cannot be undone.`, {
+        danger: true, okText: 'DELETE'
+    });
+    if (!ok) return;
+    const idx = list.findIndex(x => x.id === __landmarkEditingId);
+    if (idx >= 0) list.splice(idx, 1);
+    persistTrip();
+    closeLandmarkEditModal({ force: true });
+    renderLandmarkList();
+    showToast('LANDMARK DELETED');
+}
+
 // ──────────────── 初期化 (DOMContentLoaded 内で呼ぶ) ────────────────
 function setupEventEditHandlers() {
     // 詳細表示モーダル
@@ -6468,6 +6792,20 @@ function setupEventEditHandlers() {
     $('#lodging-edit-modal').addEventListener('click', (e) => {
         if (e.target === $('#lodging-edit-modal')) closeLodgingEditModal();
     });
+
+    // v8.0.5: Landmarks 管理モーダル (lodging と同じパターン)
+    $('#landmark-list-close').addEventListener('click', closeLandmarkListModal);
+    $('#landmark-list-modal').addEventListener('click', (e) => {
+        if (e.target === $('#landmark-list-modal')) closeLandmarkListModal();
+    });
+    $('#landmark-list-add').addEventListener('click', () => openLandmarkEditModal(null));
+
+    $('#landmark-edit-cancel').addEventListener('click', () => closeLandmarkEditModal());
+    $('#landmark-edit-save').addEventListener('click', saveLandmarkEditModal);
+    $('#landmark-edit-delete').addEventListener('click', deleteLandmarkClicked);
+    $('#landmark-edit-modal').addEventListener('click', (e) => {
+        if (e.target === $('#landmark-edit-modal')) closeLandmarkEditModal();
+    });
 }
 
 function closeModal() {
@@ -6492,6 +6830,11 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#btn-lodgings').addEventListener('click', () => {
         // OPS パネルは閉じずに残す (戻り先として自然)
         openLodgingListModal();
+    });
+    // v8.0.5: 場所登録 (landmarks) 管理
+    $('#btn-landmarks').addEventListener('click', () => {
+        // OPS パネルは閉じずに残す (戻り先として自然)
+        openLandmarkListModal();
     });
 
     // v8.0.1: イベント編集モーダル系のハンドラ設置
@@ -6562,6 +6905,11 @@ document.addEventListener('DOMContentLoaded', () => {
             //    編集モーダルは「変更未保存の確認」が走る可能性があるため
             //    closeEditModal() 経由で閉じる (内部で ckConfirm が出るかも).
             // v8.0.4: lodging 編集モーダルも同じ流儀で先に処理. 編集系を上位に.
+            // v8.0.5: landmark 編集モーダルも同様に上位で処理.
+            if ($('#landmark-edit-modal').classList.contains('active')) {
+                closeLandmarkEditModal();
+                return;
+            }
             if ($('#lodging-edit-modal').classList.contains('active')) {
                 closeLodgingEditModal();
                 return;
@@ -6576,6 +6924,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if ($('#evt-typesel-modal').classList.contains('active')) {
                 closeTypeSelModal();
+                return;
+            }
+            if ($('#landmark-list-modal').classList.contains('active')) {
+                closeLandmarkListModal();
                 return;
             }
             if ($('#lodging-list-modal').classList.contains('active')) {
@@ -6597,6 +6949,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // v8.0.4: lodging モーダル群もガード対象に
         if ($('#lodging-list-modal').classList.contains('active')) return;
         if ($('#lodging-edit-modal').classList.contains('active')) return;
+        // v8.0.5: landmark モーダル群もガード対象に
+        if ($('#landmark-list-modal').classList.contains('active')) return;
+        if ($('#landmark-edit-modal').classList.contains('active')) return;
         // stageの内側のクリックは無視。stageの外(背景)クリックでクローズ
         if (!stage.contains(e.target)) closeModal();
     });
@@ -6669,6 +7024,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="ops-action">
             <button id="btn-lodgings">🏠 Manage Lodgings</button>
             <div class="ops-desc">Add or edit accommodations for this trip. Stays are stored as date ranges, not daily events.</div>
+        </div>
+        <div class="ops-action">
+            <button id="btn-landmarks">📍 Manage Landmarks</button>
+            <div class="ops-desc">Register reusable places (airports, schools, stations) used across the itinerary. Place suggestions appear in transport name fields.</div>
         </div>
 
         <div class="ops-sector">Initialize</div>
@@ -6744,6 +7103,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const lodgEdit = document.getElementById('lodging-edit-modal');
             if (lodgList && lodgList.classList.contains('active')) return;
             if (lodgEdit && lodgEdit.classList.contains('active')) return;
+            // v8.0.5: landmark モーダルもガード対象
+            const lmList = document.getElementById('landmark-list-modal');
+            const lmEdit = document.getElementById('landmark-edit-modal');
+            if (lmList && lmList.classList.contains('active')) return;
+            if (lmEdit && lmEdit.classList.contains('active')) return;
             close();
         }
     });
@@ -6754,9 +7118,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 各ハンドラ側で行うのではなく、ボタンクリック後に汎用で close する。
     // v8.0.4: Manage Lodgings は別モーダルを開く操作なので、自動 close を抑制.
     //   (lodging モーダルを閉じた時に OPS に戻れる方が自然)
+    // v8.0.5: Manage Landmarks も同様の理由で自動 close を抑制.
     panel.querySelectorAll('.ops-action button').forEach(btn => {
         btn.addEventListener('click', () => {
             if (btn.id === 'btn-lodgings') return;  // v8.0.4: 例外
+            if (btn.id === 'btn-landmarks') return; // v8.0.5: 例外
             // confirm モーダルが出るタイプは少し遅らせて閉じる
             setTimeout(close, 50);
         });
