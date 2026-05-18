@@ -2443,6 +2443,194 @@ body.has-fullscreen-map {
     color: var(--accent-cyan);
 }
 
+/* ============================================================
+   v8.0.6 §5.3: Geocode Lookup UI
+   landmark-edit-modal (将来 lodging/event でも再利用) の
+   "Address + 🔍" 入力 → 候補リスト + ミニマップ表示 用スタイル.
+   設計指針:
+   - Address フィールドと Lookup ボタンは横並び (.evt-form-lookup-row)
+   - 候補パネルは展開式. デフォルト非表示, results 取得後に .active クラスで表示
+   - ミニマップ高さは 200px 固定 (スマホでも収まる)
+   - 各候補カードはタップ即確定. ホバーで地図ピンが対応してハイライト
+   - Less is more 原則 (§8 北極星): 装飾を抑え, シアンは確定アクションのみ
+   ============================================================ */
+.evt-form-lookup-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+.evt-form-lookup-row input {
+    flex: 1;
+    min-width: 0;
+}
+.evt-form-lookup-btn {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    background: rgba(0, 12, 24, 0.6);
+    border: 1px solid rgba(0, 242, 254, 0.35);
+    color: rgba(0, 242, 254, 0.85);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.evt-form-lookup-btn:hover:not(:disabled) {
+    background: rgba(0, 242, 254, 0.1);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}
+.evt-form-lookup-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+/* 検索結果パネル全体. body 内に挿入され, results 取得時にだけ表示 */
+.geocode-panel {
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(0, 12, 24, 0.5);
+    border: 1px solid rgba(0, 242, 254, 0.18);
+    border-radius: 6px;
+    /* display は JS で制御 */
+}
+.geocode-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.geocode-panel-title {
+    font-family: var(--text-mono);
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: rgba(0, 242, 254, 0.6);
+    text-transform: uppercase;
+}
+.geocode-panel-close {
+    background: none;
+    border: none;
+    color: rgba(226, 232, 240, 0.4);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    font-family: var(--text-mono);
+}
+.geocode-panel-close:hover { color: rgba(226, 232, 240, 0.8); }
+
+/* ミニマップ. 専用 ID で landmark-edit-modal 内に存在.
+   高さは固定 200px. メインの #leaflet-map とは別インスタンス. */
+.geocode-map {
+    width: 100%;
+    height: 200px;
+    background: #050a16;
+    border: 1px solid rgba(0, 242, 254, 0.12);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    /* Leaflet が触る要素なので overflow 等は最小限. */
+}
+/* ミニマップ用マーカー (番号付き) */
+.geocode-marker {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0, 242, 254, 0.9);
+    color: #001020;
+    border: 2px solid #001020;
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+    font-family: var(--text-mono);
+    font-size: 11px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.geocode-marker.active {
+    background: #ffd166;
+    box-shadow: 0 0 12px rgba(255, 209, 102, 0.85);
+    transform: scale(1.15);
+}
+
+/* 候補リスト. ミニマップの下に縦並び. */
+.geocode-results {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.geocode-result {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    background: var(--card-glass);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.geocode-result:hover,
+.geocode-result.active {
+    background: var(--card-glass-hover);
+    border-color: var(--card-border-hover);
+}
+.geocode-result.active {
+    border-color: rgba(255, 209, 102, 0.6);
+    box-shadow: 0 0 8px rgba(255, 209, 102, 0.15);
+}
+.geocode-result-num {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(0, 242, 254, 0.15);
+    color: rgba(0, 242, 254, 0.85);
+    font-family: var(--text-mono);
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.geocode-result.active .geocode-result-num {
+    background: rgba(255, 209, 102, 0.25);
+    color: #ffd166;
+}
+.geocode-result-body { flex: 1; min-width: 0; }
+.geocode-result-name {
+    font-family: var(--text-mono);
+    font-size: 12px;
+    color: rgba(226, 232, 240, 0.95);
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.geocode-result-where {
+    font-family: var(--text-mono);
+    font-size: 10px;
+    color: rgba(226, 232, 240, 0.5);
+    letter-spacing: 0.05em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 状態表示 (loading / empty / error) */
+.geocode-status {
+    padding: 12px;
+    text-align: center;
+    font-family: var(--text-mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: rgba(226, 232, 240, 0.5);
+}
+.geocode-status.error { color: rgba(255, 107, 107, 0.75); }
+
 /* ──── ADD EVENT ボタン (DAY 末尾) ──── */
 .tl-add-event {
     margin: 8px 0 4px;
@@ -6605,6 +6793,10 @@ async function closeLandmarkEditModal(opts = {}) {
             if (!ok) return false;
         }
     }
+    // v8.0.6 §5.3: Lookup マップを破棄 (DOM 重複 / メモリリーク防止)
+    destroyLandmarkLookupMap();
+    __lmLookupResults = [];
+    __lmLookupActiveIdx = -1;
     $('#landmark-edit-modal').classList.remove('active');
     __landmarkDraft = null;
     __landmarkDraftPristine = null;
@@ -6615,12 +6807,21 @@ async function closeLandmarkEditModal(opts = {}) {
 function renderLandmarkEditForm() {
     const lm = __landmarkDraft;
     if (!lm) return;
-    const lat = (Array.isArray(lm.coord) && lm.coord[0] != null) ? lm.coord[0] : '';
-    const lon = (Array.isArray(lm.coord) && lm.coord[1] != null) ? lm.coord[1] : '';
+    // v8.0.6 §5.3: coord は UI から削除した. データは保持し, Lookup で更新する.
+    //   既存データの coord はそのまま. 新規 landmark で Lookup なしで保存すると coord は未設定.
+    //   座標を表示しない理由: 「ユーザーは緯度経度の正誤を判断できない」(ユーザー指摘).
+    //   代わりに名前/住所での検索 → 地図と候補リストで視覚的に選ぶフローに統一.
     // v8.0.5: renderTimezoneSelect を再利用 (formTransport と同じ select).
     //   data-lf に置換するため、生成された HTML を後処理で書き換える.
     const tzSelectHtml = renderTimezoneSelect(lm.tz, 'tz')
         .replace('data-field="tz"', 'data-lf="tz"');
+    // coord の状態を Location セクション直下に小さく表示 (デバッグ的だが,
+    // ユーザーが「この landmark は座標がセット済みか?」を判断できると安心感がある).
+    const hasCoord = Array.isArray(lm.coord) && lm.coord.length === 2
+        && Number.isFinite(lm.coord[0]) && Number.isFinite(lm.coord[1]);
+    const coordHint = hasCoord
+        ? `<div class="geocode-status" style="padding:4px 0;text-align:left;font-size:10px;color:rgba(0,242,254,0.55)">✓ Coordinates set (${lm.coord[0].toFixed(4)}, ${lm.coord[1].toFixed(4)})</div>`
+        : `<div class="geocode-status" style="padding:4px 0;text-align:left;font-size:10px;color:rgba(226,232,240,0.4)">○ No coordinates yet — use 🔍 to search</div>`;
     $('#landmark-edit-body').innerHTML = `
         <div class="evt-form-section">Basics</div>
         <div class="evt-form-row">
@@ -6634,15 +6835,21 @@ function renderLandmarkEditForm() {
         <div class="evt-form-row">
             <div class="evt-form-field full">
                 <label>Address</label>
-                <input type="text" data-lf="address" value="${escapeHtml(lm.address || '')}" placeholder="Street, city, region">
+                <div class="evt-form-lookup-row">
+                    <input type="text" data-lf="address" id="landmark-edit-address" value="${escapeHtml(lm.address || '')}" placeholder="Street, city, region — or just a landmark name">
+                    <button type="button" class="evt-form-lookup-btn" id="landmark-edit-lookup-btn" title="Search this place on the map">🔍 LOOKUP</button>
+                </div>
+                ${coordHint}
             </div>
         </div>
-        <div class="evt-form-field full">
-            <label>Coord (lat, lon)</label>
-            <div class="evt-form-coord">
-                <input type="number" step="any" data-lf="coord.0" value="${lat}" placeholder="lat e.g. 49.1939">
-                <input type="number" step="any" data-lf="coord.1" value="${lon}" placeholder="lon e.g. -123.1844">
+        <!-- v8.0.6 §5.3: 検索結果パネル. 通常は非表示. Lookup ボタンで展開. -->
+        <div class="geocode-panel" id="landmark-geocode-panel" style="display:none">
+            <div class="geocode-panel-header">
+                <div class="geocode-panel-title">PICK A LOCATION</div>
+                <button type="button" class="geocode-panel-close" id="landmark-geocode-close" title="Close results">×</button>
             </div>
+            <div id="landmark-geocode-map" class="geocode-map"></div>
+            <div id="landmark-geocode-results" class="geocode-results"></div>
         </div>
         <div class="evt-form-row">
             <div class="evt-form-field">
@@ -6665,6 +6872,15 @@ function renderLandmarkEditForm() {
             setLandmarkField(el.dataset.lf, el.value, el);
         });
     });
+    // v8.0.6 §5.3: Lookup ボタン / Close ボタンのハンドラ
+    const lookupBtn = $('#landmark-edit-lookup-btn');
+    if (lookupBtn) {
+        lookupBtn.addEventListener('click', runLandmarkLookup);
+    }
+    const closeBtn = $('#landmark-geocode-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', hideLandmarkGeocodePanel);
+    }
 }
 
 function setLandmarkField(path, value, el) {
@@ -6753,6 +6969,284 @@ async function deleteLandmarkClicked() {
     closeLandmarkEditModal({ force: true });
     renderLandmarkList();
     showToast('LANDMARK DELETED');
+}
+
+// ──────────────── v8.0.6 §5.3: Geocode Lookup (landmark) ────────────────
+// 概要:
+//   Lookup ボタンを押すと, Address フィールド (空なら Name) をクエリとして
+//   /geocode?q=... を呼び出し, 最大 5 件の候補を取得.
+//   結果はミニマップ (Leaflet 別インスタンス) と縦リストで表示.
+//   タップで coord / address / (Name が空なら) name に反映し, パネルを閉じる.
+//
+// Leaflet マップ:
+//   - ID: #landmark-geocode-map. 専用変数 __lmLookupMap (メイン __leafletMap と独立)
+//   - タイルは既存と同じ CARTO Dark Matter (整合性)
+//   - モーダルを閉じる時にマップを destroy (メモリリーク防止)
+//
+// データの扱い:
+//   - 結果は __lmLookupResults にキャッシュ (タップ→確定で参照)
+//   - クエリ過程で __landmarkDraft は変更しない. 確定タップ時のみ反映.
+
+let __lmLookupMap = null;
+let __lmLookupMarkers = [];
+let __lmLookupResults = [];
+let __lmLookupActiveIdx = -1;
+let __lmLookupInFlight = false;
+
+// メインエントリ: Lookup ボタンの click ハンドラ
+async function runLandmarkLookup() {
+    if (__lmLookupInFlight) return;  // 二重起動防止
+    if (!__landmarkDraft) return;
+    // クエリは "address があれば address、なければ name". trim 済みで判定.
+    const addrInput = $('#landmark-edit-address');
+    const addr = (addrInput?.value || '').trim();
+    const name = (__landmarkDraft.name || '').trim();
+    const query = addr || name;
+    if (!query) {
+        showToast('Enter an address or name first', true);
+        return;
+    }
+    if (query.length > 50) {
+        showToast('Query too long (max 50 chars)', true);
+        return;
+    }
+    // ボタンを loading 状態に
+    const btn = $('#landmark-edit-lookup-btn');
+    const originalLabel = btn?.textContent;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ ...';
+    }
+    __lmLookupInFlight = true;
+    // パネル展開 + loading 表示
+    showLandmarkGeocodePanel();
+    setLandmarkGeocodeStatus('SEARCHING...');
+    try {
+        const data = await geocodeLookup(query);
+        const results = Array.isArray(data?.results) ? data.results : [];
+        __lmLookupResults = results;
+        if (results.length === 0) {
+            setLandmarkGeocodeStatus('No results — try a different query', false);
+        } else {
+            renderLandmarkGeocodeResults(results);
+        }
+    } catch (err) {
+        console.error('[GEOCODE_FE_ERROR]', err);
+        setLandmarkGeocodeStatus('Lookup failed — check your connection', true);
+    } finally {
+        __lmLookupInFlight = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalLabel || '🔍 LOOKUP';
+        }
+    }
+}
+
+// /geocode?q=... を fetch.
+// 戻り値: { results: [{ displayName, lat, lon, type, category, country, city }] }
+async function geocodeLookup(query) {
+    const url = '/geocode?q=' + encodeURIComponent(query);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);  // FE 側 12s
+    try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+        return await res.json();
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+// 検索結果パネルを開く. (renderLandmarkEditForm で生成済みの DOM を活性化するだけ)
+function showLandmarkGeocodePanel() {
+    const panel = $('#landmark-geocode-panel');
+    if (!panel) return;
+    panel.style.display = '';
+    // マップ初期化 (初回のみ). Leaflet は親要素サイズが必要なので display 後に呼ぶ.
+    ensureLandmarkLookupMap();
+}
+
+// パネルを閉じる + マップ破棄. modal close 時にも呼ぶ.
+function hideLandmarkGeocodePanel() {
+    const panel = $('#landmark-geocode-panel');
+    if (panel) panel.style.display = 'none';
+    destroyLandmarkLookupMap();
+    __lmLookupResults = [];
+    __lmLookupActiveIdx = -1;
+}
+
+// loading / empty / error 表示. リストとマップは空にする.
+function setLandmarkGeocodeStatus(msg, isError = false) {
+    const list = $('#landmark-geocode-results');
+    if (list) {
+        list.innerHTML = `<div class="geocode-status${isError ? ' error' : ''}">${escapeHtml(msg)}</div>`;
+    }
+    clearLandmarkLookupMarkers();
+}
+
+// 検索結果を地図 + リストに描画
+function renderLandmarkGeocodeResults(results) {
+    const listEl = $('#landmark-geocode-results');
+    if (!listEl) return;
+    // リスト構築. 各候補に番号バッジ・名前 (displayName の先頭セグメント)・所在地 (city, country)
+    listEl.innerHTML = results.map((r, idx) => {
+        // displayName の最初の `, ` までを「名前」として表示. 残りは where に. (例: 「東京駅」 / 「千代田区, 日本」)
+        const segs = (r.displayName || '').split(',').map(s => s.trim()).filter(Boolean);
+        const primaryName = segs[0] || '(unnamed)';
+        // city と country は別フィールドから. 重複しない方を結合.
+        const whereParts = [];
+        if (r.city && r.city !== primaryName) whereParts.push(r.city);
+        if (r.country && r.country !== r.city) whereParts.push(r.country);
+        const where = whereParts.length ? whereParts.join(', ') : (segs.slice(1).join(', ') || '');
+        return `
+            <div class="geocode-result" data-idx="${idx}">
+                <div class="geocode-result-num">${idx + 1}</div>
+                <div class="geocode-result-body">
+                    <div class="geocode-result-name">${escapeHtml(primaryName)}</div>
+                    <div class="geocode-result-where">${escapeHtml(where)}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    // 各行に click (確定) と mouseenter (ハイライト) を設置
+    listEl.querySelectorAll('.geocode-result').forEach(row => {
+        const idx = Number(row.dataset.idx);
+        row.addEventListener('click', () => pickGeocodeResult(idx));
+        row.addEventListener('mouseenter', () => highlightGeocodeResult(idx));
+    });
+    // 地図にマーカーを追加 + 全件が見えるよう fitBounds
+    plotLandmarkLookupMarkers(results);
+}
+
+// 候補確定: __landmarkDraft に反映 → DOM 更新 → パネル閉じる
+function pickGeocodeResult(idx) {
+    const r = __lmLookupResults[idx];
+    if (!r || !__landmarkDraft) return;
+    // coord (内部データのみ. UI 表示はヒント文だけが更新される)
+    __landmarkDraft.coord = [r.lat, r.lon];
+    // address (displayName 全体を反映 — ユーザーの選択)
+    __landmarkDraft.address = r.displayName;
+    // name (空の時のみプレフィル)
+    const currentName = (__landmarkDraft.name || '').trim();
+    if (!currentName) {
+        // displayName の先頭セグメントを name に
+        const segs = (r.displayName || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (segs[0]) __landmarkDraft.name = segs[0];
+    }
+    // パネル閉じる + フォーム再描画 (coord ヒント表示, name/address 更新)
+    hideLandmarkGeocodePanel();
+    renderLandmarkEditForm();
+    showToast('LOCATION SELECTED');
+}
+
+// マウスホバー時のハイライト連動 (リスト ↔ 地図)
+function highlightGeocodeResult(idx) {
+    __lmLookupActiveIdx = idx;
+    // リスト側
+    document.querySelectorAll('#landmark-geocode-results .geocode-result').forEach((el, i) => {
+        el.classList.toggle('active', i === idx);
+    });
+    // 地図側マーカー
+    __lmLookupMarkers.forEach((m, i) => {
+        const icon = m.getElement();
+        if (!icon) return;
+        const inner = icon.querySelector('.geocode-marker');
+        if (inner) inner.classList.toggle('active', i === idx);
+    });
+    // 地図をその位置に pan (zoom は維持)
+    const r = __lmLookupResults[idx];
+    if (r && __lmLookupMap) {
+        __lmLookupMap.panTo([r.lat, r.lon], { animate: true, duration: 0.3 });
+    }
+}
+
+// Leaflet マップ初期化. 初回のみ生成.
+function ensureLandmarkLookupMap() {
+    if (__lmLookupMap) {
+        // 既に存在 → サイズ再計算のみ (パネル開き直しに対応)
+        setTimeout(() => __lmLookupMap?.invalidateSize(), 100);
+        return __lmLookupMap;
+    }
+    if (typeof L === 'undefined') {
+        // Leaflet 未ロード時のフォールバック
+        const el = document.getElementById('landmark-geocode-map');
+        if (el) {
+            el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:rgba(255,107,107,0.7);font-family:var(--text-mono);font-size:10px;letter-spacing:0.15em">⚠ MAP ENGINE UNAVAILABLE</div>';
+        }
+        return null;
+    }
+    const el = document.getElementById('landmark-geocode-map');
+    if (!el) return null;
+    __lmLookupMap = L.map(el, {
+        zoomControl: true,
+        attributionControl: true,
+        scrollWheelZoom: true,
+        touchZoom: true,
+        keyboard: false,
+        worldCopyJump: false,
+        minZoom: 2,
+        maxZoom: 18
+    }).setView([0, 0], 2);
+    // メインマップと同じ CARTO Dark Matter タイル
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(__lmLookupMap);
+    // モーダルが display:none の状態から開かれた直後はサイズが 0 のため,
+    // 次のフレームで invalidateSize して再計算させる.
+    setTimeout(() => __lmLookupMap?.invalidateSize(), 80);
+    return __lmLookupMap;
+}
+
+// マーカーをすべて消す
+function clearLandmarkLookupMarkers() {
+    if (!__lmLookupMap) return;
+    __lmLookupMarkers.forEach(m => __lmLookupMap.removeLayer(m));
+    __lmLookupMarkers = [];
+}
+
+// 検索結果に基づいてマーカーをプロット + fitBounds
+function plotLandmarkLookupMarkers(results) {
+    if (!__lmLookupMap) return;
+    clearLandmarkLookupMarkers();
+    const latlngs = [];
+    results.forEach((r, idx) => {
+        const num = idx + 1;
+        const icon = L.divIcon({
+            className: 'geocode-marker-wrap',
+            html: `<div class="geocode-marker">${num}</div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
+        });
+        const marker = L.marker([r.lat, r.lon], { icon }).addTo(__lmLookupMap);
+        marker.on('click', () => pickGeocodeResult(idx));
+        marker.on('mouseover', () => highlightGeocodeResult(idx));
+        __lmLookupMarkers.push(marker);
+        latlngs.push([r.lat, r.lon]);
+    });
+    // 全件が見える範囲に fitBounds. 1 件のみなら setView でズーム.
+    if (latlngs.length === 1) {
+        __lmLookupMap.setView(latlngs[0], 14);
+    } else if (latlngs.length > 1) {
+        const bounds = L.latLngBounds(latlngs);
+        __lmLookupMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
+    }
+}
+
+// モーダル close 時に呼ぶ. マップを完全に破棄.
+function destroyLandmarkLookupMap() {
+    if (!__lmLookupMap) return;
+    try {
+        clearLandmarkLookupMarkers();
+        __lmLookupMap.remove();
+    } catch (e) {
+        // 何らかの理由で破棄失敗 → ログのみ
+        console.warn('[GEOCODE_FE] map remove failed', e?.message);
+    }
+    __lmLookupMap = null;
 }
 
 // ──────────────── 初期化 (DOMContentLoaded 内で呼ぶ) ────────────────
